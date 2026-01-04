@@ -1,6 +1,6 @@
 # Clone the repository
 # git clone -b backtest https://github.com/leoz0610/interactive-brokers-web-api.git
-cd interactive-brokers-web-api/simulation
+# cd interactive-brokers-web-api/simulation
 
 # Set up environment
 python3 -m venv venv
