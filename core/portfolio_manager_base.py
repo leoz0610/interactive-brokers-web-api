@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from order_manager import Order
+from .order_manager import Order
 
 
 class PositionBase(ABC):

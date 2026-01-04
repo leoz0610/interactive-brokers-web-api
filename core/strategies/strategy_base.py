@@ -5,7 +5,6 @@ Abstract base class for implementing trading strategies.
 """
 
 import os
-
 import sys
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -13,15 +12,8 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-sys.path.insert(
-    0,
-    os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "simulation"
-    ),
-)
-
-from order_manager import Order, OrderSide, OrderType
-from portfolio_manager_base import PortfolioManagerBase
+from ..order_manager import Order, OrderSide, OrderType
+from ..portfolio_manager_base import PortfolioManagerBase
 
 
 class StrategyBase(ABC):

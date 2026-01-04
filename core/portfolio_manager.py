@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from order_manager import Order, OrderSide
-from portfolio_manager_base import PortfolioManagerBase, PositionBase
+from .order_manager import Order, OrderSide
+from .portfolio_manager_base import PortfolioManagerBase, PositionBase
 
 logger = logging.getLogger(__name__)
 

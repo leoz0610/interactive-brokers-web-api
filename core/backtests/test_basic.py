@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Basic test script to validate the simulation framework.
+Basic test script to validate the lib framework.
 """
 
 import os
@@ -11,15 +11,14 @@ project_root = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
 sys.path.insert(0, project_root)
-sys.path.insert(0, os.path.join(project_root, "simulation"))
 
-print("Testing simulation framework...")
+print("Testing core framework...")
 print("-" * 60)
 
 # Test imports
 print("\n1. Testing imports...")
 try:
-    from simulation import (
+    from core import (
         BacktestEngine,
         DataProvider,
         Order,
@@ -30,8 +29,8 @@ try:
         PerformanceAnalytics,
         PortfolioManager,
         PortfolioManagerBase,
+        StrategyBase,
     )
-    from strategies import StrategyBase
 
     print("   ✓ All core modules imported successfully")
 except Exception as e:
@@ -117,7 +116,7 @@ except Exception as e:
 # Test strategy
 print("\n5. Testing Strategy...")
 try:
-    from strategies import BuyAndHoldStrategy
+    from core.strategies import BuyAndHoldStrategy
 
     strategy = BuyAndHoldStrategy()
     print(f"   ✓ Created strategy: {strategy.name}")
@@ -132,7 +131,7 @@ except Exception as e:
 # Test backtest engine (quick test)
 print("\n6. Testing BacktestEngine...")
 try:
-    from strategies import BuyAndHoldStrategy
+    from core.strategies import BuyAndHoldStrategy
 
     engine = BacktestEngine(
         initial_cash=100000.0, commission_percent=0.1, slippage_percent=0.05
@@ -165,6 +164,6 @@ except Exception as e:
 print("\n" + "=" * 60)
 print("All tests passed! ✓")
 print("=" * 60)
-print("\nThe simulation framework is ready to use.")
-print("Run 'python3 simulation/backtests/example_backtest.py' for full examples.")
+print("\nThe core framework is ready to use.")
+print("Run 'python3 core/backtests/example_backtest.py' for full examples.")
 print()

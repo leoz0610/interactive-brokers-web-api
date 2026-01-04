@@ -2,7 +2,7 @@
 """
 Example Backtest Script
 
-Demonstrates how to use the simulation framework to backtest trading strategies.
+Demonstrates how to use the core framework to backtest trading strategies.
 """
 
 import os
@@ -13,11 +13,10 @@ project_root = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
 sys.path.insert(0, project_root)
-sys.path.insert(0, os.path.join(project_root, "simulation"))
 
-from simulation import BacktestEngine
-from simulation.utils import print_results_summary, save_results_to_json
-from strategies import BuyAndHoldStrategy, MovingAverageCrossoverStrategy
+from core import BacktestEngine
+from core.strategies import BuyAndHoldStrategy, MovingAverageCrossoverStrategy
+from core.utils import print_results_summary, save_results_to_json
 
 
 def run_buy_and_hold_example():
@@ -56,7 +55,7 @@ def run_buy_and_hold_example():
     print_results_summary(results)
 
     # Save results
-    output_file = "simulation/simulation/data/buy_and_hold_results.json"
+    output_file = "core/simulation/data/buy_and_hold_results.json"
     save_results_to_json(results, output_file)
     print(f"Results saved to {output_file}")
 
@@ -101,7 +100,7 @@ def run_moving_average_example():
     print_results_summary(results)
 
     # Save results
-    output_file = "simulation/simulation/data/moving_average_results.json"
+    output_file = "core/simulation/data/moving_average_results.json"
     save_results_to_json(results, output_file)
     print(f"Results saved to {output_file}")
 

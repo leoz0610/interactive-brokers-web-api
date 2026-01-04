@@ -6,20 +6,17 @@ Core engine for running backtests with trading strategies.
 
 import logging
 import os
-
 import sys
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from analytics import PerformanceAnalytics
-from data_provider import DataProvider
-from order_manager import OrderManager, OrderSide, OrderType
-from portfolio_manager import PortfolioManager
-from strategies import StrategyBase
+from .analytics import PerformanceAnalytics
+from .data_provider import DataProvider
+from .order_manager import OrderManager, OrderSide, OrderType
+from .portfolio_manager import PortfolioManager
+from .strategies import StrategyBase
 
 logger = logging.getLogger(__name__)
 
