@@ -14,31 +14,19 @@ from .order_manager import Order
 class PositionBase(ABC):
     """
     Abstract base class representing a position in a security.
+
+    Concrete implementations must provide:
+    - symbol: str - Symbol of the position
+    - quantity: int - Quantity of shares held
+    - avg_price: float - Average price of the position
+    - current_price: float - Current market price
     """
 
-    @property
-    @abstractmethod
-    def symbol(self) -> str:
-        """Symbol of the position."""
-        pass
-
-    @property
-    @abstractmethod
-    def quantity(self) -> int:
-        """Quantity of shares held."""
-        pass
-
-    @property
-    @abstractmethod
-    def avg_price(self) -> float:
-        """Average price of the position."""
-        pass
-
-    @property
-    @abstractmethod
-    def current_price(self) -> float:
-        """Current market price."""
-        pass
+    # These are expected to be provided by concrete implementations
+    symbol: str
+    quantity: int
+    avg_price: float
+    current_price: float
 
     @property
     @abstractmethod
