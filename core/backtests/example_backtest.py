@@ -55,7 +55,13 @@ def run_buy_and_hold_example():
     print_results_summary(results)
 
     # Save results
-    output_file = os.path.join(os.path.dirname(__file__), "..", "simulation", "data", "buy_and_hold_results.json")
+    output_file = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "simulation",
+        "data",
+        "buy_and_hold_results.json",
+    )
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     save_results_to_json(results, output_file)
     print(f"Results saved to {output_file}")
@@ -101,7 +107,13 @@ def run_moving_average_example():
     print_results_summary(results)
 
     # Save results
-    output_file = os.path.join(os.path.dirname(__file__), "..", "simulation", "data", "moving_average_results.json")
+    output_file = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "simulation",
+        "data",
+        "moving_average_results.json",
+    )
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     save_results_to_json(results, output_file)
     print(f"Results saved to {output_file}")
