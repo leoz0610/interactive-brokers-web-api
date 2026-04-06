@@ -21,22 +21,31 @@ Usage examples:
 
 import argparse
 import logging
+import math
 import os
 import sys
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
-import pandas as pd
-import yfinance as yf
-
-# Add project root to path
+# Auto-activate the project venv if dependencies aren't available
 project_root = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
+_venv_site = os.path.join(project_root, "core", "venv", "lib")
+if os.path.isdir(_venv_site):
+    import glob as _gl
+    _sp = _gl.glob(os.path.join(_venv_site, "python*", "site-packages"))
+    for _p in _sp:
+        if _p not in sys.path:
+            sys.path.insert(0, _p)
+
+import pandas as pd  # noqa: E402
+import yfinance as yf  # noqa: E402
+
+# Add project root to path for core.utils
 sys.path.insert(0, project_root)
 
-from core.utils import save_results_to_json
+from core.utils import save_results_to_json  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -108,14 +117,14 @@ def resolve_dates(
 
 def fmt_pct(value: Optional[float]) -> str:
     """Format a number as a percentage string."""
-    if value is None or (isinstance(value, float) and np.isnan(value)):
+    if value is None or (isinstance(value, float) and math.isnan(value)):
         return "N/A"
     return f"{value:+.2f}%"
 
 
 def fmt_dollar(value: Optional[float]) -> str:
     """Format a number as a dollar string."""
-    if value is None or (isinstance(value, float) and np.isnan(value)):
+    if value is None or (isinstance(value, float) and math.isnan(value)):
         return "N/A"
     return f"${value:,.2f}"
 
