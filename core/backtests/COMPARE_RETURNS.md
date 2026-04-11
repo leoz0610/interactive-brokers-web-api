@@ -54,12 +54,12 @@ Example output:
 ```
 Period: 2024-01-01 to 2025-01-01
 
-Symbol     Type              Start        End     Return     Annual        Vol     Max DD
------------------------------------------------------------------------------------------
-SPY        Benchmark       $472.65    $592.44    +25.35%    +25.35%    +12.80%     -8.45%
------------------------------------------------------------------------------------------
-AAPL       Ticker          $185.33    $243.85    +31.57%    +31.57%    +22.10%    -16.23%
-MSFT       Ticker          $374.72    $421.40    +12.46%    +12.46%    +24.55%    -14.08%
+Symbol     Type              Start        End   TotalRet  PriceRet    DivRet     Annual        Vol     Max DD
+-------------------------------------------------------------------------------------------------------------
+SPY        Benchmark       $472.65    $592.44    +25.35%   +23.95%    +1.40%    +25.35%    +12.80%     -8.45%
+-------------------------------------------------------------------------------------------------------------
+AAPL       Ticker          $185.33    $243.85    +31.57%   +31.12%    +0.45%    +31.57%    +22.10%    -16.23%
+MSFT       Ticker          $374.72    $421.40    +12.46%   +11.66%    +0.80%    +12.46%    +24.55%    -14.08%
 ```
 
 ### 2. Portfolio Spreadsheet Mode
@@ -177,14 +177,26 @@ Any valid Yahoo Finance ticker works. Common choices:
 | DIA | Dow Jones ETF |
 | ^GSPC | S&P 500 Index (not an ETF) |
 
+## Return Breakdown: Price vs Dividend
+
+All returns are broken down into **price return** and **dividend return**:
+
+- **Total Return** — the overall return including both price appreciation and dividends, computed from dividend-adjusted prices (`auto_adjust=True` in yfinance).
+- **Price Return** — the portion of total return attributable to price appreciation alone, calculated as `Total Return - Dividend Return`.
+- **Dividend Return** — the portion of total return attributable to dividends received during the period, calculated as `sum(dividends) / start_price`.
+
+This decomposition appears in both the ticker-list mode terminal output and the portfolio markdown report (Holdings Summary, Top Outperformers, and Top Underperformers tables).
+
+**Note:** The dividend return uses a simple yield calculation (total dividends divided by starting price) rather than a time-weighted reinvestment model. This provides a clear, intuitive breakdown but may not perfectly sum to the total return for holdings with large, frequent dividend payments over long periods.
+
 ## Report Structure
 
 The generated markdown report includes:
 
 1. **Overview** -- analysis metadata, total market value, portfolio weighted return, benchmark return, excess return
-2. **Holdings Summary** -- table with each holding's return, weight, and excess vs benchmark
-3. **Top Outperformers** -- top 5 holdings by excess return
-4. **Top Underperformers** -- bottom 5 holdings by excess return
+2. **Holdings Summary** -- table with each holding's total return, price return, dividend return, weight, and excess vs benchmark
+3. **Top Outperformers** -- top 5 holdings by excess return, with return breakdown
+4. **Top Underperformers** -- bottom 5 holdings by excess return, with return breakdown
 5. **Portfolio Insights** -- narrative summary of drivers, laggards, and concentration risk
 6. **Data Issues** -- any tickers with missing or incomplete data
 
