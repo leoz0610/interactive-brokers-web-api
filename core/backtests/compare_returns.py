@@ -219,13 +219,22 @@ def compute_return(df: pd.DataFrame) -> dict:
     """
     Compute return statistics from a price DataFrame.
 
-    Returns dict with keys: total_return_pct, annualized_return_pct,
-    max_drawdown_pct, volatility_pct, start_price, end_price,
-    start_date, end_date.
+    Returns dict with keys: total_return_pct, price_return_pct,
+    dividend_return_pct, annualized_return_pct, max_drawdown_pct,
+    volatility_pct, start_price, end_price, start_date, end_date.
+
+    Note: Since prices are fetched with auto_adjust=True, the Close
+    column reflects adjusted prices (split- and dividend-adjusted).
+    Total return is computed from these adjusted prices.  Dividend
+    return is derived from the Dividends column (sum of dividends
+    paid divided by the starting adjusted price).  Price return is
+    the remainder: total_return - dividend_return.
     """
     if df is None or df.empty or len(df) < 2:
         return {
             "total_return_pct": None,
+            "price_return_pct": None,
+            "dividend_return_pct": None,
             "annualized_return_pct": None,
             "max_drawdown_pct": None,
             "volatility_pct": None,
@@ -239,6 +248,14 @@ def compute_return(df: pd.DataFrame) -> dict:
     start_price = float(close.iloc[0])
     end_price = float(close.iloc[-1])
     total_return_pct = ((end_price / start_price) - 1) * 100
+
+    # Dividend return: sum of dividends paid over the period divided
+    # by the starting adjusted price.  Price return is the remainder.
+    dividend_return_pct = 0.0
+    if "Dividends" in df.columns and start_price > 0:
+        total_dividends = float(df["Dividends"].sum())
+        dividend_return_pct = (total_dividends / start_price) * 100
+    price_return_pct = total_return_pct - dividend_return_pct
 
     start_dt = df.index[0]
     end_dt = df.index[-1]
@@ -261,6 +278,8 @@ def compute_return(df: pd.DataFrame) -> dict:
 
     return {
         "total_return_pct": total_return_pct,
+        "price_return_pct": price_return_pct,
+        "dividend_return_pct": dividend_return_pct,
         "annualized_return_pct": annualized_return_pct,
         "max_drawdown_pct": max_drawdown_pct,
         "volatility_pct": volatility_pct,
@@ -347,6 +366,8 @@ def analyze_portfolio(
             "start_price": stats["start_price"],
             "end_price": stats["end_price"],
             "return_pct": stats["total_return_pct"],
+            "price_return_pct": stats["price_return_pct"],
+            "dividend_return_pct": stats["dividend_return_pct"],
             "annualized_return_pct": stats["annualized_return_pct"],
             "volatility_pct": stats["volatility_pct"],
             "max_drawdown_pct": stats["max_drawdown_pct"],
@@ -437,7 +458,8 @@ def print_comparison(results: dict) -> None:
 
     header = (
         f"{'Symbol':<10} {'Type':<12} {'Start':>10} {'End':>10} "
-        f"{'Return':>10} {'Annual':>10} {'Vol':>10} {'Max DD':>10}"
+        f"{'TotalRet':>10} {'PriceRet':>10} {'DivRet':>10} "
+        f"{'Annual':>10} {'Vol':>10} {'Max DD':>10}"
     )
     print("\n" + header)
     print("-" * len(header))
@@ -451,6 +473,8 @@ def print_comparison(results: dict) -> None:
             f"{fmt_dollar(stats['start_price']):>10} "
             f"{fmt_dollar(stats['end_price']):>10} "
             f"{fmt_pct(stats['total_return_pct']):>10} "
+            f"{fmt_pct(stats['price_return_pct']):>10} "
+            f"{fmt_pct(stats['dividend_return_pct']):>10} "
             f"{fmt_pct(stats['annualized_return_pct']):>10} "
             f"{fmt_pct(stats['volatility_pct']):>10} "
             f"{fmt_pct(stats['max_drawdown_pct']):>10}"
@@ -506,9 +530,10 @@ def generate_markdown_report(results: dict, input_file: str) -> str:
     ln()
     ln(
         "| Ticker | MarketValue | Weight | StartDate | EndDate | StartPrice "
-        "| EndPrice | Return | BenchmarkReturn | ExcessVsBenchmark | Status |"
+        "| EndPrice | TotalReturn | PriceReturn | DividendReturn "
+        "| BenchmarkReturn | ExcessVsBenchmark | Status |"
     )
-    ln("|---|---|---|---|---|---|---|---|---|---|---|")
+    ln("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for h in holdings:
         ln(
             f"| {h['ticker']} "
@@ -519,6 +544,8 @@ def generate_markdown_report(results: dict, input_file: str) -> str:
             f"| {fmt_dollar(h['start_price'])} "
             f"| {fmt_dollar(h['end_price'])} "
             f"| {fmt_pct(h['return_pct'])} "
+            f"| {fmt_pct(h['price_return_pct'])} "
+            f"| {fmt_pct(h['dividend_return_pct'])} "
             f"| {fmt_pct(h['benchmark_return_pct'])} "
             f"| {fmt_pct(h['excess_return_pct'])} "
             f"| {h['status']} |"
@@ -533,10 +560,14 @@ def generate_markdown_report(results: dict, input_file: str) -> str:
     ln()
     top = ranked_by_excess[:TOP_N]
     if top:
-        ln("| Rank | Ticker | Return | Excess vs Benchmark |")
-        ln("|---|---|---|---|")
+        ln("| Rank | Ticker | TotalReturn | PriceReturn | DividendReturn | Excess vs Benchmark |")
+        ln("|---|---|---|---|---|---|")
         for i, h in enumerate(top, 1):
-            ln(f"| {i} | {h['ticker']} | {fmt_pct(h['return_pct'])} | {fmt_pct(h['excess_return_pct'])} |")
+            ln(
+                f"| {i} | {h['ticker']} | {fmt_pct(h['return_pct'])} "
+                f"| {fmt_pct(h['price_return_pct'])} | {fmt_pct(h['dividend_return_pct'])} "
+                f"| {fmt_pct(h['excess_return_pct'])} |"
+            )
     else:
         ln("No valid holdings to rank.")
     ln()
@@ -547,10 +578,14 @@ def generate_markdown_report(results: dict, input_file: str) -> str:
     bottom = ranked_by_excess[-TOP_N:] if len(ranked_by_excess) > TOP_N else ranked_by_excess
     bottom = sorted(bottom, key=lambda h: h["excess_return_pct"])
     if bottom:
-        ln("| Rank | Ticker | Return | Excess vs Benchmark |")
-        ln("|---|---|---|---|")
+        ln("| Rank | Ticker | TotalReturn | PriceReturn | DividendReturn | Excess vs Benchmark |")
+        ln("|---|---|---|---|---|---|")
         for i, h in enumerate(bottom, 1):
-            ln(f"| {i} | {h['ticker']} | {fmt_pct(h['return_pct'])} | {fmt_pct(h['excess_return_pct'])} |")
+            ln(
+                f"| {i} | {h['ticker']} | {fmt_pct(h['return_pct'])} "
+                f"| {fmt_pct(h['price_return_pct'])} | {fmt_pct(h['dividend_return_pct'])} "
+                f"| {fmt_pct(h['excess_return_pct'])} |"
+            )
     else:
         ln("No valid holdings to rank.")
     ln()
