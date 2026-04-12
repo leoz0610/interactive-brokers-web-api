@@ -148,6 +148,7 @@ Options:
   --start YYYY-MM-DD        Start date
   --end YYYY-MM-DD          End date
   --period PERIOD            Lookback period (default: 1y)
+  --top-n N                  Number of top/bottom holdings in report (default: 5)
   -h, --help                Show help
 ```
 

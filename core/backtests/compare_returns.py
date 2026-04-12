@@ -493,7 +493,7 @@ def print_comparison(results: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def generate_markdown_report(results: dict, input_file: str) -> str:
+def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N) -> str:
     """Build the full markdown report string from analysis results."""
     lines = []
 
@@ -558,7 +558,7 @@ def generate_markdown_report(results: dict, input_file: str) -> str:
 
     ln("## 3. Top Outperformers")
     ln()
-    top = ranked_by_excess[:TOP_N]
+    top = ranked_by_excess[:top_n]
     if top:
         ln("| Rank | Ticker | TotalReturn | PriceReturn | DividendReturn | Excess vs Benchmark |")
         ln("|---|---|---|---|---|---|")
@@ -575,7 +575,7 @@ def generate_markdown_report(results: dict, input_file: str) -> str:
     # ---- 4. Top Underperformers ----
     ln("## 4. Top Underperformers")
     ln()
-    bottom = ranked_by_excess[-TOP_N:] if len(ranked_by_excess) > TOP_N else ranked_by_excess
+    bottom = ranked_by_excess[-top_n:] if len(ranked_by_excess) > top_n else ranked_by_excess
     bottom = sorted(bottom, key=lambda h: h["excess_return_pct"])
     if bottom:
         ln("| Rank | Ticker | TotalReturn | PriceReturn | DividendReturn | Excess vs Benchmark |")
@@ -724,6 +724,8 @@ def main():
     parser.add_argument("--period", default=DEFAULT_PERIOD,
                         help=f"Lookback period (default: {DEFAULT_PERIOD})")
     parser.add_argument("--output", "-o", help="Output path (.md or .json)")
+    parser.add_argument("--top-n", type=int, default=TOP_N,
+                        help=f"Number of top/bottom holdings to show (default: {TOP_N})")
 
     args = parser.parse_args()
 
@@ -736,7 +738,7 @@ def main():
         logger.info(f"Loaded {len(holdings)} holdings")
 
         results = analyze_portfolio(holdings, args.benchmark, start_date, end_date)
-        report_md = generate_markdown_report(results, args.input_file)
+        report_md = generate_markdown_report(results, args.input_file, top_n=args.top_n)
 
         output_path = args.output or "output/report.md"
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
