@@ -34,6 +34,7 @@ project_root = os.path.dirname(
 _venv_site = os.path.join(project_root, "core", "venv", "lib")
 if os.path.isdir(_venv_site):
     import glob as _gl
+
     _sp = _gl.glob(os.path.join(_venv_site, "python*", "site-packages"))
     for _p in _sp:
         if _p not in sys.path:
@@ -62,14 +63,23 @@ TOP_N = 5
 COLUMN_ALIASES = {
     "Ticker": ["ticker", "symbol", "stock", "stock_ticker"],
     "MarketValue": [
-        "marketvalue", "market_value", "market value",
-        "currentvalue", "current_value", "current value", "value",
+        "marketvalue",
+        "market_value",
+        "market value",
+        "currentvalue",
+        "current_value",
+        "current value",
+        "value",
     ],
     "Portfolio": ["portfolio", "account", "portfolio_name"],
     "Shares": ["shares", "quantity", "qty"],
     "CostBasis": [
-        "costbasis", "cost_basis", "cost basis",
-        "cost", "avgcost", "avg_cost",
+        "costbasis",
+        "cost_basis",
+        "cost basis",
+        "cost",
+        "avgcost",
+        "avg_cost",
     ],
 }
 
@@ -165,8 +175,7 @@ def load_holdings(filepath: str) -> pd.DataFrame:
 
     if "Ticker" not in df.columns:
         raise ValueError(
-            "Spreadsheet must contain a 'Ticker' column "
-            f"(found: {list(df.columns)})"
+            "Spreadsheet must contain a 'Ticker' column " f"(found: {list(df.columns)})"
         )
 
     # Clean up
@@ -200,12 +209,19 @@ def load_holdings(filepath: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def fetch_prices(
-    ticker: str, start_date: str, end_date: str
-) -> Optional[pd.DataFrame]:
+def _yf_ticker(ticker: str) -> str:
+    """Normalize a ticker symbol for Yahoo Finance.
+
+    Many brokerages use a dot for share classes (e.g. BRK.B) while Yahoo
+    Finance expects a hyphen (BRK-B).
+    """
+    return ticker.replace(".", "-")
+
+
+def fetch_prices(ticker: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
     """Fetch adjusted-close price history from yfinance. Returns None on failure."""
     try:
-        t = yf.Ticker(ticker)
+        t = yf.Ticker(_yf_ticker(ticker))
         df = t.history(start=start_date, end=end_date, auto_adjust=True)
         if df.empty:
             return None
@@ -272,7 +288,7 @@ def compute_return(df: pd.DataFrame) -> dict:
 
     daily_returns = close.pct_change().dropna()
     if len(daily_returns) > 0:
-        volatility_pct = float(daily_returns.std() * (252 ** 0.5) * 100)
+        volatility_pct = float(daily_returns.std() * (252**0.5) * 100)
     else:
         volatility_pct = 0.0
 
@@ -357,25 +373,27 @@ def analyze_portfolio(
         if stats["total_return_pct"] is not None and bench_return is not None:
             excess = stats["total_return_pct"] - bench_return
 
-        holding_results.append({
-            "ticker": ticker,
-            "market_value": market_value,
-            "weight": weight,
-            "start_date": stats["start_date"],
-            "end_date": stats["end_date"],
-            "start_price": stats["start_price"],
-            "end_price": stats["end_price"],
-            "return_pct": stats["total_return_pct"],
-            "price_return_pct": stats["price_return_pct"],
-            "dividend_return_pct": stats["dividend_return_pct"],
-            "annualized_return_pct": stats["annualized_return_pct"],
-            "volatility_pct": stats["volatility_pct"],
-            "max_drawdown_pct": stats["max_drawdown_pct"],
-            "benchmark_return_pct": bench_return,
-            "excess_return_pct": excess,
-            "status": status,
-            "notes": notes,
-        })
+        holding_results.append(
+            {
+                "ticker": ticker,
+                "market_value": market_value,
+                "weight": weight,
+                "start_date": stats["start_date"],
+                "end_date": stats["end_date"],
+                "start_price": stats["start_price"],
+                "end_price": stats["end_price"],
+                "return_pct": stats["total_return_pct"],
+                "price_return_pct": stats["price_return_pct"],
+                "dividend_return_pct": stats["dividend_return_pct"],
+                "annualized_return_pct": stats["annualized_return_pct"],
+                "volatility_pct": stats["volatility_pct"],
+                "max_drawdown_pct": stats["max_drawdown_pct"],
+                "benchmark_return_pct": bench_return,
+                "excess_return_pct": excess,
+                "status": status,
+                "notes": notes,
+            }
+        )
 
     # Sort by market value descending
     holding_results.sort(key=lambda h: h["market_value"], reverse=True)
@@ -521,8 +539,12 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
     ln(f"| Holdings Analyzed | {results['num_valid']} of {results['num_holdings']} |")
     ln(f"| Total Market Value | {fmt_dollar(results['total_market_value'])} |")
     ln(f"| Benchmark Return | {fmt_pct(bench_ret)} |")
-    ln(f"| Portfolio Weighted Return | {fmt_pct(results['portfolio_weighted_return_pct'])} |")
-    ln(f"| Portfolio Excess vs Benchmark | {fmt_pct(results['portfolio_weighted_excess_pct'])} |")
+    ln(
+        f"| Portfolio Weighted Return | {fmt_pct(results['portfolio_weighted_return_pct'])} |"
+    )
+    ln(
+        f"| Portfolio Excess vs Benchmark | {fmt_pct(results['portfolio_weighted_excess_pct'])} |"
+    )
     ln()
 
     # ---- 2. Holdings Summary Table ----
@@ -554,13 +576,17 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
 
     # ---- 3. Top Outperformers ----
     ranked = [h for h in valid_holdings if h["excess_return_pct"] is not None]
-    ranked_by_excess = sorted(ranked, key=lambda h: h["excess_return_pct"], reverse=True)
+    ranked_by_excess = sorted(
+        ranked, key=lambda h: h["excess_return_pct"], reverse=True
+    )
 
     ln("## 3. Top Outperformers")
     ln()
     top = ranked_by_excess[:top_n]
     if top:
-        ln("| Rank | Ticker | TotalReturn | PriceReturn | DividendReturn | Excess vs Benchmark |")
+        ln(
+            "| Rank | Ticker | TotalReturn | PriceReturn | DividendReturn | Excess vs Benchmark |"
+        )
         ln("|---|---|---|---|---|---|")
         for i, h in enumerate(top, 1):
             ln(
@@ -575,10 +601,14 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
     # ---- 4. Top Underperformers ----
     ln("## 4. Top Underperformers")
     ln()
-    bottom = ranked_by_excess[-top_n:] if len(ranked_by_excess) > top_n else ranked_by_excess
+    bottom = (
+        ranked_by_excess[-top_n:] if len(ranked_by_excess) > top_n else ranked_by_excess
+    )
     bottom = sorted(bottom, key=lambda h: h["excess_return_pct"])
     if bottom:
-        ln("| Rank | Ticker | TotalReturn | PriceReturn | DividendReturn | Excess vs Benchmark |")
+        ln(
+            "| Rank | Ticker | TotalReturn | PriceReturn | DividendReturn | Excess vs Benchmark |"
+        )
         ln("|---|---|---|---|---|---|")
         for i, h in enumerate(bottom, 1):
             ln(
@@ -646,14 +676,10 @@ def _generate_insights(results: dict, ranked: List[dict]) -> List[str]:
     if ranked:
         top = ranked[:3]
         top_names = ", ".join(h["ticker"] for h in top)
-        paragraphs.append(
-            f"Top contributors to outperformance: **{top_names}**."
-        )
+        paragraphs.append(f"Top contributors to outperformance: **{top_names}**.")
         bottom = ranked[-3:]
         bottom_names = ", ".join(h["ticker"] for h in bottom)
-        paragraphs.append(
-            f"Largest laggards vs benchmark: **{bottom_names}**."
-        )
+        paragraphs.append(f"Largest laggards vs benchmark: **{bottom_names}**.")
 
     # Concentration
     if valid:
@@ -704,28 +730,43 @@ def main():
 
     # Ticker list mode
     parser.add_argument(
-        "tickers", nargs="*", default=[],
+        "tickers",
+        nargs="*",
+        default=[],
         help="Stock tickers to compare (ticker-list mode)",
     )
 
     # Portfolio mode
     parser.add_argument(
-        "--input", "-i", dest="input_file",
+        "--input",
+        "-i",
+        dest="input_file",
         help="Path to CSV or Excel file with holdings",
     )
 
     # Common options
-    parser.add_argument("--benchmark", default=DEFAULT_BENCHMARK,
-                        help=f"Benchmark ticker (default: {DEFAULT_BENCHMARK})")
-    parser.add_argument("--benchmarks", nargs="+",
-                        help="Multiple benchmark tickers (ticker-list mode)")
+    parser.add_argument(
+        "--benchmark",
+        default=DEFAULT_BENCHMARK,
+        help=f"Benchmark ticker (default: {DEFAULT_BENCHMARK})",
+    )
+    parser.add_argument(
+        "--benchmarks", nargs="+", help="Multiple benchmark tickers (ticker-list mode)"
+    )
     parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", help="End date (YYYY-MM-DD)")
-    parser.add_argument("--period", default=DEFAULT_PERIOD,
-                        help=f"Lookback period (default: {DEFAULT_PERIOD})")
+    parser.add_argument(
+        "--period",
+        default=DEFAULT_PERIOD,
+        help=f"Lookback period (default: {DEFAULT_PERIOD})",
+    )
     parser.add_argument("--output", "-o", help="Output path (.md or .json)")
-    parser.add_argument("--top-n", type=int, default=TOP_N,
-                        help=f"Number of top/bottom holdings to show (default: {TOP_N})")
+    parser.add_argument(
+        "--top-n",
+        type=int,
+        default=TOP_N,
+        help=f"Number of top/bottom holdings to show (default: {TOP_N})",
+    )
 
     args = parser.parse_args()
 
@@ -750,9 +791,15 @@ def main():
         print(f"\n{'='*60}")
         print(f"  Portfolio: {os.path.basename(args.input_file)}")
         print(f"  Period:    {start_date} to {end_date}")
-        print(f"  Benchmark: {args.benchmark} ({fmt_pct(results['benchmark_stats']['total_return_pct'])})")
-        print(f"  Portfolio weighted return: {fmt_pct(results['portfolio_weighted_return_pct'])}")
-        print(f"  Excess vs benchmark:      {fmt_pct(results['portfolio_weighted_excess_pct'])}")
+        print(
+            f"  Benchmark: {args.benchmark} ({fmt_pct(results['benchmark_stats']['total_return_pct'])})"
+        )
+        print(
+            f"  Portfolio weighted return: {fmt_pct(results['portfolio_weighted_return_pct'])}"
+        )
+        print(
+            f"  Excess vs benchmark:      {fmt_pct(results['portfolio_weighted_excess_pct'])}"
+        )
         print(f"  Report: {output_path}")
         print(f"{'='*60}\n")
 
