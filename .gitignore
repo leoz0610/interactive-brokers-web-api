@@ -162,3 +162,7 @@ cython_debug/
 #.idea/
 
 .DS_Store
+
+# Portfolio snapshot
+scripts/sample_output/
+scripts/venv/
