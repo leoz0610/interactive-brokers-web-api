@@ -33,35 +33,55 @@ cookies, passed with the required `--cookies` argument.
 
 The tool verifies the cookies grant authenticated access before processing any
 emails. Cookies expire, so re-export them when you start seeing the sign-in wall
-again. Both **Netscape `cookies.txt`** and **JSON** cookie exports are accepted.
+again. Three input formats are accepted and auto-detected:
 
-### Exporting CNBC cookies from Chrome
+- a **raw `Cookie:` header** string (the no-extension method below),
+- a **Netscape `cookies.txt`** file, or
+- a **JSON** cookie export.
 
-Use a cookie-export extension (Chrome doesn't export cookies to a file on its
-own):
+### Exporting CNBC cookies from Chrome DevTools (no extension needed)
+
+If you can't install browser extensions, copy the cookies straight out of
+DevTools. You must use the **Network tab's request header** — *not* the console's
+`document.cookie`, because CNBC's login cookies are `HttpOnly` and invisible to
+JavaScript.
 
 1. In Chrome, log in to the CNBC Investing Club at
    <https://www.cnbc.com/investingclub/> and confirm you can read a members
    article.
-2. Install a cookie-export extension from the Chrome Web Store — either:
-   - **"Get cookies.txt LOCALLY"** → exports the Netscape `cookies.txt` format, or
-   - **"Cookie-Editor"** → use its *Export* button for JSON.
-3. With a `cnbc.com` tab focused, click the extension's icon and **Export**.
-   - *Get cookies.txt LOCALLY*: choose "Export" → saves `cookies.txt`. Make sure
-     it captures the current site (cnbc.com); "Export As → Current Site" is fine.
-   - *Cookie-Editor*: click **Export** (clipboard/JSON), then paste into a file,
-     e.g. `cnbc_cookies.json`.
-4. Save the file somewhere outside the repo (it contains your live session — see
-   the security note below) and pass its path to `--cookies`:
+2. Open DevTools: **View → Developer → Developer Tools**, or press
+   **⌘+⌥+I** (Mac) / **F12** (Windows).
+3. Click the **Network** tab. Tick **Preserve log** (optional but helpful).
+4. **Reload the page** (⌘+R / F5) so requests appear.
+5. In the request list, click the top **document** request — usually named
+   `investingclub/` or `www.cnbc.com` (filter by **Doc** if needed).
+6. In the **Headers** panel, scroll to **Request Headers** and find the line
+   starting with **`Cookie:`**. (If you only see "Provisional headers", reload
+   again with the Network tab already open.)
+7. Right-click that `Cookie:` line → **Copy value** (or select the whole value
+   after `Cookie:` and copy it).
+8. Paste it into a plain text file, e.g. `~/cnbc_cookies.txt`. The leading
+   `Cookie:` label is fine to include or omit — both are accepted. The content
+   looks like:
+
+   ```
+   region=US; _abck=...; bm_sz=...; userid=...; session_token=...; ...
+   ```
+
+9. Run the tool pointing at that file:
 
    ```bash
    python main.py --cookies ~/cnbc_cookies.txt \
        --start 2026-01-01 --end 2026-06-01
    ```
 
-> **Security:** an exported cookie file is as sensitive as your password — anyone
-> with it can use your CNBC session. Keep it out of version control and delete it
-> when you're done (or store it in a protected location).
+> **Security:** this file contains your live CNBC session — it's as sensitive as
+> your password. Save it outside the repo, keep it out of version control, and
+> delete it when you're done.
+
+(If you *can* install an extension, "Get cookies.txt LOCALLY" → Netscape
+`cookies.txt`, or "Cookie-Editor" → JSON export, both work as `--cookies` inputs
+too.)
 
 ## Usage
 

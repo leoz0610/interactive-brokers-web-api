@@ -48,16 +48,31 @@ class CnbcClient:
     # Cookie loading
     # ------------------------------------------------------------------ #
     def _load_cookies(self, path: str) -> None:
-        """Load cookies from a Netscape cookies.txt or a JSON cookie export."""
-        # Try JSON first (browser-extension exports), fall back to Netscape.
-        loaded = self._load_cookies_json(path)
-        if loaded is None:
+        """Load cookies from any of three formats, auto-detected:
+
+        1. JSON cookie export (browser extensions),
+        2. Netscape cookies.txt,
+        3. a raw `Cookie:` request-header string copied from DevTools, e.g.
+           `name1=value1; name2=value2` (the no-extension method — see README).
+        """
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                raw = fh.read()
+        except (OSError, UnicodeDecodeError) as exc:
+            raise CnbcLoginError(f"Could not read cookies file '{path}': {exc}")
+
+        stripped = raw.lstrip()
+        if stripped.startswith("{") or stripped.startswith("["):
+            loaded = self._load_cookies_json(raw)
+        elif "# Netscape" in raw or "# HTTP Cookie File" in raw or "\t" in raw:
             loaded = self._load_cookies_netscape(path)
+        else:
+            loaded = self._load_cookies_header(raw)
 
         if not loaded:
             raise CnbcLoginError(
-                f"No cookies could be loaded from '{path}'. Expected a Netscape "
-                "cookies.txt or a JSON cookie export."
+                f"No cookies could be loaded from '{path}'. Expected a JSON "
+                "export, a Netscape cookies.txt, or a raw 'Cookie:' header line."
             )
 
         domains = {c.domain for c in self.session.cookies}
@@ -66,19 +81,15 @@ class CnbcClient:
             f"across domains: {', '.join(sorted(domains))}"
         )
 
-    def _load_cookies_json(self, path: str) -> int | None:
+    def _load_cookies_json(self, raw: str) -> int | None:
         """Load a JSON cookie export (e.g. 'Cookie-Editor' / 'EditThisCookie').
 
-        Returns the count loaded, or None if the file isn't JSON (so the caller
-        can try the Netscape format).
+        Returns the count loaded, or None if the text isn't usable JSON.
         """
         try:
-            with open(path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-        except (json.JSONDecodeError, UnicodeDecodeError):
+            data = json.loads(raw)
+        except json.JSONDecodeError:
             return None
-        except OSError as exc:
-            raise CnbcLoginError(f"Could not read cookies file '{path}': {exc}")
 
         # Accept either a bare list or {"cookies": [...]}.
         if isinstance(data, dict) and "cookies" in data:
@@ -95,6 +106,32 @@ class CnbcClient:
                 c["value"],
                 domain=c.get("domain", ".cnbc.com"),
                 path=c.get("path", "/"),
+            )
+            count += 1
+        return count
+
+    def _load_cookies_header(self, raw: str) -> int:
+        """Parse a raw `Cookie:` request-header string into the session.
+
+        Accepts the value with or without a leading 'Cookie:' label, e.g.
+        `Cookie: a=1; b=2` or `a=1; b=2`. All cookies are scoped to .cnbc.com.
+        """
+        text = raw.strip()
+        # Tolerate a pasted "Cookie:" / "cookie:" prefix.
+        if text.lower().startswith("cookie:"):
+            text = text.split(":", 1)[1].strip()
+
+        count = 0
+        for pair in text.split(";"):
+            pair = pair.strip()
+            if not pair or "=" not in pair:
+                continue
+            name, value = pair.split("=", 1)
+            name, value = name.strip(), value.strip()
+            if not name:
+                continue
+            self.session.cookies.set(
+                name, value, domain=".cnbc.com", path="/"
             )
             count += 1
         return count
