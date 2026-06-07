@@ -1,20 +1,18 @@
-"""CNBC Investment Club client.
+"""CNBC Investment Club client (cookie-based auth).
 
-Logs in once via a `requests.Session` and reuses the session cookies for every
-subsequent article fetch.
+CNBC sits behind Akamai Bot Manager, which blocks programmatic username/password
+logins from `requests` (you get HTTP 403/503 regardless of correct credentials).
+So authentication here is **cookie-based**: log in once in a normal browser,
+export the cnbc.com cookies, and load them into the session. The same cookies
+also carry the Akamai clearance needed to fetch article pages.
 
-NOTE ON THE LOGIN FLOW: CNBC's authentication uses an OAuth-style flow backed by
-a Janrain/registration endpoint, and the exact form fields / token names change
-over time. Rather than hard-code a brittle flow, this client:
-  1. GETs the login page to pick up cookies and any CSRF/hidden token,
-  2. POSTs the credentials to a configurable login endpoint,
-  3. verifies the result.
-The endpoint and field names are overridable so the implementer can adjust them
-after inspecting the live login page (see README.md).
+See README.md for how to export cookies from Chrome.
 """
 
+import json
+from http.cookiejar import LoadError, MozillaCookieJar
+
 import requests
-from bs4 import BeautifulSoup
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -22,9 +20,8 @@ DEFAULT_USER_AGENT = (
     "Chrome/124.0.0.0 Safari/537.36"
 )
 
-# Default endpoints — adjust after inspecting the live login page if needed.
-LOGIN_PAGE_URL = "https://www.cnbc.com/investingclub/"
-LOGIN_POST_URL = "https://register.cnbc.com/auth/api/v3/signin"
+# Members-only page used to verify that loaded cookies are actually authenticated.
+VERIFY_URL = "https://www.cnbc.com/investingclub/"
 
 REQUEST_TIMEOUT = 30
 
@@ -34,94 +31,159 @@ class CnbcLoginError(RuntimeError):
 
 
 class CnbcClient:
-    def __init__(
-        self,
-        username: str,
-        password: str,
-        login_page_url: str = LOGIN_PAGE_URL,
-        login_post_url: str = LOGIN_POST_URL,
-    ):
-        self.username = username
+    def __init__(self, cookies_file: str):
         self.session = requests.Session()
         self.session.headers.update(
             {
                 "User-Agent": DEFAULT_USER_AGENT,
                 "Accept": "text/html,application/xhtml+xml,application/xml;"
                 "q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
             }
         )
-        self._login(username, password, login_page_url, login_post_url)
+        self._load_cookies(cookies_file)
+        self._verify_cookie_auth()
 
-    def _login(
-        self,
-        username: str,
-        password: str,
-        login_page_url: str,
-        login_post_url: str,
-    ) -> None:
-        # Step 1: prime the session with cookies and discover any CSRF token.
+    # ------------------------------------------------------------------ #
+    # Cookie loading
+    # ------------------------------------------------------------------ #
+    def _load_cookies(self, path: str) -> None:
+        """Load cookies from a Netscape cookies.txt or a JSON cookie export."""
+        # Try JSON first (browser-extension exports), fall back to Netscape.
+        loaded = self._load_cookies_json(path)
+        if loaded is None:
+            loaded = self._load_cookies_netscape(path)
+
+        if not loaded:
+            raise CnbcLoginError(
+                f"No cookies could be loaded from '{path}'. Expected a Netscape "
+                "cookies.txt or a JSON cookie export."
+            )
+
+        domains = {c.domain for c in self.session.cookies}
+        print(
+            f"Loaded {loaded} cookie(s) from {path} "
+            f"across domains: {', '.join(sorted(domains))}"
+        )
+
+    def _load_cookies_json(self, path: str) -> int | None:
+        """Load a JSON cookie export (e.g. 'Cookie-Editor' / 'EditThisCookie').
+
+        Returns the count loaded, or None if the file isn't JSON (so the caller
+        can try the Netscape format).
+        """
         try:
-            page = self.session.get(login_page_url, timeout=REQUEST_TIMEOUT)
+            with open(path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        except OSError as exc:
+            raise CnbcLoginError(f"Could not read cookies file '{path}': {exc}")
+
+        # Accept either a bare list or {"cookies": [...]}.
+        if isinstance(data, dict) and "cookies" in data:
+            data = data["cookies"]
+        if not isinstance(data, list):
+            return None
+
+        count = 0
+        for c in data:
+            if not isinstance(c, dict) or "name" not in c or "value" not in c:
+                continue
+            self.session.cookies.set(
+                c["name"],
+                c["value"],
+                domain=c.get("domain", ".cnbc.com"),
+                path=c.get("path", "/"),
+            )
+            count += 1
+        return count
+
+    def _load_cookies_netscape(self, path: str) -> int:
+        """Load a Netscape-format cookies.txt via http.cookiejar."""
+        jar = MozillaCookieJar()
+        try:
+            jar.load(path, ignore_discard=True, ignore_expires=True)
+        except (LoadError, OSError) as exc:
+            raise CnbcLoginError(
+                f"Could not parse cookies file '{path}' as Netscape format: {exc}"
+            )
+        self.session.cookies.update(jar)
+        return len(jar)
+
+    # ------------------------------------------------------------------ #
+    # Verification
+    # ------------------------------------------------------------------ #
+    def _verify_cookie_auth(self) -> None:
+        """Confirm the loaded cookies grant authenticated access."""
+        try:
+            resp = self.session.get(VERIFY_URL, timeout=REQUEST_TIMEOUT)
         except requests.RequestException as exc:
             raise CnbcLoginError(
-                f"Could not reach CNBC login page: {exc}"
+                f"Could not reach CNBC to verify cookies: {exc}"
             ) from exc
 
-        csrf_token = self._find_csrf_token(page.text)
-
-        # Step 2: submit credentials. CNBC's signin API expects JSON; fall back
-        # to form-encoded if a non-JSON endpoint is configured.
-        payload = {"email": username, "password": password}
-        if csrf_token:
-            payload["csrf"] = csrf_token
-
-        try:
-            resp = self.session.post(
-                login_post_url,
-                json=payload,
-                headers={"Referer": login_page_url},
-                timeout=REQUEST_TIMEOUT,
-            )
-        except requests.RequestException as exc:
-            raise CnbcLoginError(f"Login request failed: {exc}") from exc
-
-        # Step 3: verify. A successful sign-in returns 200/302 and sets auth
-        # cookies. We treat an explicit auth-failure status or a body that still
-        # shows a sign-in form as failure.
-        if resp.status_code in (401, 403):
-            raise CnbcLoginError(
-                f"CNBC login rejected credentials (HTTP {resp.status_code})."
-            )
         if resp.status_code >= 400:
             raise CnbcLoginError(
-                f"CNBC login failed (HTTP {resp.status_code})."
+                f"Cookie verification request failed (HTTP {resp.status_code}).\n"
+                + self._describe_response(resp)
             )
 
-        if not self._looks_authenticated(resp):
+        if self._looks_like_signin_wall(resp.text):
             raise CnbcLoginError(
-                "CNBC login did not appear to succeed — no auth cookie was set. "
-                "Inspect the live login page and adjust LOGIN_POST_URL / field "
-                "names in cnbc_client.py."
+                "Loaded cookies do not appear to be authenticated — CNBC still "
+                "shows a sign-in wall. Re-export fresh cookies after logging in "
+                "to the Investing Club in your browser (see README)."
             )
+        print("CNBC cookie authentication verified.")
 
     @staticmethod
-    def _find_csrf_token(html: str) -> str | None:
-        soup = BeautifulSoup(html, "lxml")
-        for name in ("csrf", "csrfToken", "_csrf", "csrf_token"):
-            tag = soup.find("input", attrs={"name": name})
-            if tag and tag.get("value"):
-                return tag["value"]
-            meta = soup.find("meta", attrs={"name": name})
-            if meta and meta.get("content"):
-                return meta["content"]
-        return None
+    def _looks_like_signin_wall(html: str) -> bool:
+        """Heuristic: does the page push sign-in/subscribe rather than content?"""
+        lowered = (html or "").lower()
+        markers = (
+            "sign in to continue",
+            "subscribe to cnbc investing club",
+            "start your subscription",
+            "create your free account",
+        )
+        return any(m in lowered for m in markers)
 
-    def _looks_authenticated(self, resp: requests.Response) -> bool:
-        """Heuristic auth check: an auth/session cookie should now be present."""
-        cookie_names = {c.lower() for c in self.session.cookies.keys()}
-        auth_markers = ("token", "session", "auth", "user", "login")
-        return any(marker in name for name in cookie_names for marker in auth_markers)
+    @staticmethod
+    def _describe_response(resp: requests.Response) -> str:
+        """Human-readable dump of a failed response: telltale headers + a body
+        snippet. Helps distinguish bot-blocking (Akamai) from a real auth error.
+        """
+        interesting = ("server", "content-type", "x-akamai-", "akamai",
+                       "set-cookie", "retry-after", "x-reference-error")
+        header_lines = []
+        for key, value in resp.headers.items():
+            if any(key.lower().startswith(p) or p in key.lower()
+                   for p in interesting):
+                header_lines.append(f"    {key}: {value}")
 
+        body = (resp.text or "").strip().replace("\n", " ")
+        snippet = body[:400] + ("…" if len(body) > 400 else "")
+
+        akamai_hint = ""
+        blob = (body + " ".join(header_lines)).lower()
+        if "akamai" in blob or "reference #" in blob or "access denied" in blob:
+            akamai_hint = (
+                "\n  >> This looks like Akamai bot protection blocking the "
+                "request. Re-export fresh cookies from a browser where you're "
+                "logged in (see README).")
+
+        return (
+            "  --- response headers ---\n"
+            + ("\n".join(header_lines) or "    (none of interest)")
+            + "\n  --- body snippet ---\n    "
+            + (snippet or "(empty)")
+            + akamai_hint
+        )
+
+    # ------------------------------------------------------------------ #
+    # Fetching
+    # ------------------------------------------------------------------ #
     def fetch_article(self, url: str) -> str | None:
         """GET an article URL with the authenticated session; return HTML or None."""
         try:

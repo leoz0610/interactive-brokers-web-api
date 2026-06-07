@@ -23,52 +23,90 @@ Requires Python 3.10+.
 - Use a **Google App Password** (not your normal password and not OAuth). Create
   one at <https://myaccount.google.com/apppasswords>.
 
+## CNBC authentication (cookie-based — required)
+
+CNBC is protected by **Akamai Bot Manager**, which blocks programmatic
+username/password login from `requests` (you'll get HTTP 403/503 no matter how
+correct the credentials are). There is therefore **no CNBC password option** —
+authentication is done by reusing your browser's logged-in session via exported
+cookies, passed with the required `--cookies` argument.
+
+The tool verifies the cookies grant authenticated access before processing any
+emails. Cookies expire, so re-export them when you start seeing the sign-in wall
+again. Both **Netscape `cookies.txt`** and **JSON** cookie exports are accepted.
+
+### Exporting CNBC cookies from Chrome
+
+Use a cookie-export extension (Chrome doesn't export cookies to a file on its
+own):
+
+1. In Chrome, log in to the CNBC Investing Club at
+   <https://www.cnbc.com/investingclub/> and confirm you can read a members
+   article.
+2. Install a cookie-export extension from the Chrome Web Store — either:
+   - **"Get cookies.txt LOCALLY"** → exports the Netscape `cookies.txt` format, or
+   - **"Cookie-Editor"** → use its *Export* button for JSON.
+3. With a `cnbc.com` tab focused, click the extension's icon and **Export**.
+   - *Get cookies.txt LOCALLY*: choose "Export" → saves `cookies.txt`. Make sure
+     it captures the current site (cnbc.com); "Export As → Current Site" is fine.
+   - *Cookie-Editor*: click **Export** (clipboard/JSON), then paste into a file,
+     e.g. `cnbc_cookies.json`.
+4. Save the file somewhere outside the repo (it contains your live session — see
+   the security note below) and pass its path to `--cookies`:
+
+   ```bash
+   python main.py --cookies ~/cnbc_cookies.txt \
+       --start 2026-01-01 --end 2026-06-01
+   ```
+
+> **Security:** an exported cookie file is as sensitive as your password — anyone
+> with it can use your CNBC session. Keep it out of version control and delete it
+> when you're done (or store it in a protected location).
+
 ## Usage
 
 ```bash
-python main.py --label "CNBC/InvestmentClub" \
+python main.py --cookies ~/cnbc_cookies.txt \
     --start 2026-01-01 --end 2026-06-01 --output ./cnbc_articles
 ```
 
-`--label`, `--start`, `--end`, `--output`, `--gmail-email`, and
-`--cnbc-username` are CLI arguments:
+CLI arguments:
 
+- `--cookies` (**required**) — path to your exported CNBC cookies file; see the
+  CNBC authentication section above.
 - `--label` defaults to `CNBC/InvestmentClub`.
 - `--output` defaults to `./output`.
-- `--gmail-email` and `--cnbc-username` both default to
-  `chensili.uestc@gmail.com`.
+- `--gmail-email` defaults to `chensili.uestc@gmail.com`.
 - If you omit `--start` or `--end` you're prompted for them.
 
-Only the two passwords are resolved at runtime (once per run) — masked via
-`getpass`:
+The only secret resolved at runtime is the Gmail app password — masked via
+`getpass` (CNBC uses the cookie file, not a password):
 
 ```
 Gmail app password: ****          # masked (getpass)
-CNBC password: ****               # masked (getpass)
 ```
 
-Override the accounts when needed:
+Override the Gmail account when needed:
 
 ```bash
-python main.py --gmail-email me@gmail.com --cnbc-username me@example.com \
+python main.py --cookies ~/cnbc_cookies.txt --gmail-email me@gmail.com \
     --start 2026-01-01 --end 2026-06-01
 ```
 
 Dates use `YYYY-MM-DD`. The end date is inclusive.
 
-### Skipping the password prompts
+### Skipping the Gmail password prompt
 
-To avoid typing the passwords each run, export them as environment variables;
-the script reads them when set and only prompts for any that are missing:
+To avoid typing the Gmail app password each run, export it as an environment
+variable; the script reads it when set and prompts only if it's missing:
 
 ```bash
 export GMAIL_APP_PASSWORD="abcdefghijklmnop"   # the 16-char Gmail app password
-export CNBC_PASSWORD="your-cnbc-password"
-python main.py --start 2026-01-01 --end 2026-06-01
+python main.py --cookies ~/cnbc_cookies.txt --start 2026-01-01 --end 2026-06-01
 ```
 
-Keep these out of version control. Prefer setting them in your shell session or
-a password manager rather than a committed file; if you use a `.env`, add it to
+Keep this out of version control. Prefer setting it in your shell session or a
+password manager rather than a committed file; if you use a `.env`, add it to
 `.gitignore` first.
 
 ## Output
@@ -79,24 +117,24 @@ each extracted article (title, source URL, plain-text content). Emails with no
 CNBC links still produce a file noting that. Articles that fail to fetch/extract
 get a placeholder block instead of aborting the run.
 
-## Adjusting the CNBC login flow
+## Troubleshooting CNBC access
 
-CNBC's sign-in flow changes over time and may use CSRF tokens or a different
-endpoint. `cnbc_client.py` defines `LOGIN_PAGE_URL` and `LOGIN_POST_URL` plus a
-heuristic auth check (`_looks_authenticated`). If login fails:
+- **"sign-in wall" error on startup** — your cookies are stale or didn't capture
+  the logged-in session. Re-log in via Chrome and re-export (see above).
+- **`Article ... returned HTTP 403`** during a run — Akamai challenged that
+  page. Re-export fresh cookies; if it persists, the article may need a real
+  browser. The cookie file's `VERIFY_URL` check passing but articles 403-ing
+  means the session aged out mid-run.
 
-1. Open the CNBC Investment Club login page in a browser with dev-tools open.
-2. Inspect the login form's `action` URL and field names, and any hidden/CSRF
-   tokens or redirect parameters.
-3. Update `LOGIN_PAGE_URL` / `LOGIN_POST_URL` and the payload field names
-   (`email`, `password`, `csrf`) in `cnbc_client.py` to match.
+`cnbc_client.py` exposes `VERIFY_URL` (the members page used to confirm auth) if
+you need to point the check at a different URL.
 
 ## Files
 
 | File | Responsibility |
 |---|---|
-| `main.py` | CLI parsing, credential prompts, orchestration, summary |
+| `main.py` | CLI parsing, Gmail password prompt, orchestration, summary |
 | `gmail_client.py` | IMAP connect, fetch by label+date, mark as read |
-| `cnbc_client.py` | `requests.Session` login + authenticated article fetch |
+| `cnbc_client.py` | Cookie-based auth + authenticated article fetch |
 | `extractor.py` | Email link discovery + readability article extraction |
 | `writer.py` | Markdown formatting and file writing |

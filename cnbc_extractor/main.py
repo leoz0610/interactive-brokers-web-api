@@ -15,14 +15,12 @@ import os
 import sys
 from datetime import datetime
 
-# Environment variables that, when set, supply the passwords so you don't have
-# to type them every run. If unset, the script falls back to an interactive
-# getpass prompt.
+# When set, this env var supplies the Gmail app password so you don't have to
+# type it every run. If unset, the script falls back to an interactive prompt.
+# (CNBC has no password env var: its login is bot-walled, so auth is via cookies.)
 GMAIL_PASSWORD_ENV = "GMAIL_APP_PASSWORD"
-CNBC_PASSWORD_ENV = "CNBC_PASSWORD"
 
-# Default account used for both Gmail and the CNBC Investment Club login.
-# Override per run with --gmail-email / --cnbc-username.
+# Default Gmail account. Override per run with --gmail-email.
 DEFAULT_EMAIL = "chensili.uestc@gmail.com"
 
 from cnbc_client import CnbcClient, CnbcLoginError
@@ -53,9 +51,11 @@ def parse_args() -> argparse.Namespace:
         help=f"Gmail email address (default: {DEFAULT_EMAIL})",
     )
     parser.add_argument(
-        "--cnbc-username",
-        default=DEFAULT_EMAIL,
-        help=f"CNBC Investment Club username (default: {DEFAULT_EMAIL})",
+        "--cookies",
+        required=True,
+        help="Path to a CNBC cookies file (Netscape cookies.txt or JSON export). "
+        "Required: CNBC's bot protection blocks password login, so auth is via "
+        "exported browser cookies. See README for how to export them.",
     )
     return parser.parse_args()
 
@@ -95,20 +95,17 @@ def main() -> int:
     )
     output_dir = args.output
 
-    # Credentials — resolved once per run. The email/username come from CLI args
-    # (defaulting to DEFAULT_EMAIL); passwords come from environment variables
-    # when set (see GMAIL_PASSWORD_ENV / CNBC_PASSWORD_ENV), otherwise the user
-    # is prompted interactively.
+    # Gmail credentials. The email comes from --gmail-email (defaulting to
+    # DEFAULT_EMAIL); the app password comes from GMAIL_PASSWORD_ENV when set,
+    # otherwise the user is prompted interactively.
     gmail_email = args.gmail_email
-    cnbc_username = args.cnbc_username
     print(f"Gmail email: {gmail_email}")
-    print(f"CNBC username: {cnbc_username}")
     gmail_password = _password_from_env_or_prompt(
         GMAIL_PASSWORD_ENV, "Gmail app password: "
     )
-    cnbc_password = _password_from_env_or_prompt(
-        CNBC_PASSWORD_ENV, "CNBC password: "
-    )
+
+    # CNBC auth is cookie-based (bot protection blocks password login).
+    print(f"CNBC auth: using cookies from {args.cookies}")
 
     # Connect to Gmail (fatal on failure).
     try:
@@ -116,9 +113,9 @@ def main() -> int:
     except RuntimeError as exc:
         sys.exit(f"ERROR: {exc}")
 
-    # Login to CNBC (fatal on failure).
+    # Authenticate to CNBC via cookies (fatal on failure).
     try:
-        cnbc = CnbcClient(cnbc_username, cnbc_password)
+        cnbc = CnbcClient(cookies_file=args.cookies)
     except CnbcLoginError as exc:
         gmail.close()
         sys.exit(f"ERROR: {exc}")
