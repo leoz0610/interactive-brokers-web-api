@@ -30,9 +30,10 @@ python main.py --label "CNBC/InvestmentClub" \
     --start 2026-01-01 --end 2026-06-01 --output ./cnbc_articles
 ```
 
-`--label`, `--start`, `--end`, and `--output` are CLI arguments (`--output`
-defaults to `./output`); any of the first three you omit are prompted for. The
-four credentials are always prompted interactively, **once per run**:
+`--label`, `--start`, `--end`, and `--output` are CLI arguments. `--label`
+defaults to `CNBC/InvestmentClub` and `--output` to `./output`; if you omit
+`--start` or `--end` you're prompted for them. The email/username and the two
+passwords are resolved **once per run**:
 
 ```
 Gmail email: user@gmail.com
@@ -42,6 +43,21 @@ CNBC password: ****               # masked (getpass)
 ```
 
 Dates use `YYYY-MM-DD`. The end date is inclusive.
+
+### Skipping the password prompts
+
+To avoid typing the passwords each run, export them as environment variables;
+the script reads them when set and only prompts for any that are missing:
+
+```bash
+export GMAIL_APP_PASSWORD="abcdefghijklmnop"   # the 16-char Gmail app password
+export CNBC_PASSWORD="your-cnbc-password"
+python main.py --start 2026-01-01 --end 2026-06-01
+```
+
+Keep these out of version control. Prefer setting them in your shell session or
+a password manager rather than a committed file; if you use a `.env`, add it to
+`.gitignore` first.
 
 ## Output
 

@@ -11,8 +11,15 @@ Usage:
 
 import argparse
 import getpass
+import os
 import sys
 from datetime import datetime
+
+# Environment variables that, when set, supply the passwords so you don't have
+# to type them every run. If unset, the script falls back to an interactive
+# getpass prompt.
+GMAIL_PASSWORD_ENV = "GMAIL_APP_PASSWORD"
+CNBC_PASSWORD_ENV = "CNBC_PASSWORD"
 
 from cnbc_client import CnbcClient, CnbcLoginError
 from extractor import extract_article_content, extract_links_from_email
@@ -24,7 +31,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Extract CNBC Investment Club articles linked in Gmail emails."
     )
-    parser.add_argument("--label", help="Gmail label, e.g. CNBC/InvestmentClub")
+    parser.add_argument(
+        "--label",
+        default="CNBC/InvestmentClub",
+        help="Gmail label (default: CNBC/InvestmentClub)",
+    )
     parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", help="End date (YYYY-MM-DD)")
     parser.add_argument(
@@ -39,6 +50,15 @@ def _prompt_if_missing(value: str | None, prompt: str) -> str:
     while not value:
         value = input(prompt).strip()
     return value
+
+
+def _password_from_env_or_prompt(env_var: str, prompt: str) -> str:
+    """Return the password from `env_var` if set, else prompt with getpass."""
+    value = os.environ.get(env_var)
+    if value:
+        print(f"Using password from ${env_var}.")
+        return value
+    return getpass.getpass(prompt)
 
 
 def _validate_date(date_str: str, field: str) -> str:
@@ -61,11 +81,17 @@ def main() -> int:
     )
     output_dir = args.output
 
-    # Credentials — prompted once per run.
+    # Credentials — resolved once per run. Passwords come from environment
+    # variables when set (see GMAIL_PASSWORD_ENV / CNBC_PASSWORD_ENV), otherwise
+    # the user is prompted interactively.
     gmail_email = input("Gmail email: ").strip()
-    gmail_password = getpass.getpass("Gmail app password: ")
+    gmail_password = _password_from_env_or_prompt(
+        GMAIL_PASSWORD_ENV, "Gmail app password: "
+    )
     cnbc_username = input("CNBC username: ").strip()
-    cnbc_password = getpass.getpass("CNBC password: ")
+    cnbc_password = _password_from_env_or_prompt(
+        CNBC_PASSWORD_ENV, "CNBC password: "
+    )
 
     # Connect to Gmail (fatal on failure).
     try:
