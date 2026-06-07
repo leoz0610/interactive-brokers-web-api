@@ -36,6 +36,7 @@ There is no programmatic login. The user browses to `https://localhost:5055` and
 - `ACCOUNT_ID` comes from the `IBKR_ACCOUNT_ID` env var, set in `docker-compose.yml`; it must match a real IBKR account for order/portfolio routes.
 - `webapp/` is bind-mounted, so `app.py`/template edits hot-reload. Changes to `conf.yaml`, `Dockerfile`, or `scripts/` require a rebuild.
 - **`scripts/rest_api_examples.py`** — standalone scratchpad (mostly commented snippets) for exploring the API; run inside the container.
+- `webapp/requirements.txt` lists `flask`/`requests`, but `start.sh` pip-installs those two inline rather than from the file — so adding a webapp dependency means editing `start.sh` (and rebuilding), not just the requirements file.
 
 ---
 
@@ -60,12 +61,13 @@ There is no pytest/unittest harness. `backtests/test_basic.py` is a hand-rolled 
 2. For each timestamp: update portfolio prices → execute pending orders → fill into portfolio → call `strategy.on_data(timestamp, data)` with history-up-to-now → turn returned signals into orders (market orders execute immediately) → record equity.
 3. At the end, `PerformanceAnalytics` computes metrics and `_generate_results()` returns one results dict (summary, metrics, equity curve, transactions, positions, orders).
 
-Components (all re-exported from `core/__init__.py`):
-- **`DataProvider`** (`data_provider.py`) — fetches OHLCV from Yahoo Finance (`yfinance`) and **caches every fetch as CSV** under `core/simulation/data/cache/` keyed by `{symbol}_{start}_{end}_{interval}.csv`. Committed cache files exist; delete them or call `clear_cache()` to force refetch.
+Components (re-exported from `core/__init__.py`: `DataProvider`, `PortfolioManager`, `PortfolioManagerBase`, `PositionBase`, `OrderManager`, `Order`, `OrderType`, `OrderSide`, `OrderStatus`, `BacktestEngine`, `StrategyBase`, `PerformanceAnalytics`. Concrete strategies and `core.utils` are **not** re-exported here — import them from `core.strategies` / `core.utils`):
+- **`DataProvider`** (`data_provider.py`) — fetches OHLCV from Yahoo Finance (`yfinance`) and **caches every fetch as CSV** keyed by `{symbol}_{start}_{end}_{interval}.csv`. The cache dir default is the **CWD-relative** `simulation/data/cache`, so the committed caches under `core/simulation/data/cache/` only resolve when scripts run from `core/`. Delete them or call `clear_cache()` to force refetch.
 - **`OrderManager`** (`order_manager.py`) — `Order` dataclass + execution logic for MARKET/LIMIT/STOP/STOP_LIMIT, applying configurable commission and slippage. Order validation happens in `Order.__post_init__`.
 - **`PortfolioManager`** (`portfolio_manager.py`) — concrete impl of `PortfolioManagerBase`; tracks cash, positions, transactions, realized/unrealized P&L, and equity history.
-- **`StrategyBase`** (`core/strategies/strategy_base.py`) — abstract base. **Subclass and implement `on_data()`** to return a list of signal dicts (`{symbol, side, quantity, order_type, limit_price?, stop_price?}`); helpers like `create_market_order`, `has_position`, `get_historical_data`, `get_position_size` are provided. Optional `on_start()`/`on_end()` hooks. Concrete strategies: `BuyAndHoldStrategy`, `MovingAverageCrossoverStrategy` (registered in `core/strategies/__init__.py`).
+- **`StrategyBase`** (`core/strategies/strategy_base.py`) — abstract base. **Subclass and implement `on_data()`** to return a list of signal dicts (`{symbol, side, quantity, order_type, limit_price?, stop_price?}`); helpers like `create_market_order`/`create_limit_order`, `has_position`, `get_historical_data`, `get_current_price`, `get_position_quantity` (current share count) and `get_position_size` (risk-based share sizer) are provided. Optional `on_start()`/`on_end()` hooks. Concrete strategies: `BuyAndHoldStrategy`, `MovingAverageCrossoverStrategy` (registered in `core/strategies/__init__.py`).
 - **`PerformanceAnalytics`** (`analytics.py`) — Sharpe, max drawdown, total return, etc., from the equity curve.
+- **`core/utils/`** (package, not a module) — `helpers.py` provides `save_results_to_json`/`load_results_from_json`, `format_currency`/`format_percent`, `calculate_date_range`, `validate_date_format`, `print_results_summary`. Used by `example_backtest.py` and `compare_returns.py`. Example output is committed at `core/simulation/data/{buy_and_hold,moving_average}_results.json`.
 
 **Adding a strategy:** create a `StrategyBase` subclass in `core/strategies/`, implement `on_data()`, and add it to `core/strategies/__init__.py`.
 
