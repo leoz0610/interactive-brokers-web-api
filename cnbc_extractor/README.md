@@ -94,7 +94,7 @@ CLI arguments:
 
 - `--cookies` (**required**) — path to your exported CNBC cookies file; see the
   CNBC authentication section above.
-- `--label` defaults to `CNBC/InvestmentClub`.
+- `--label` defaults to `CNBC investing`.
 - `--output` defaults to `./output`.
 - `--gmail-email` defaults to `chensili.uestc@gmail.com`.
 - If you omit `--start` or `--end` you're prompted for them.

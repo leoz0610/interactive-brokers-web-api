@@ -5,7 +5,7 @@ fetches each article via an authenticated CNBC session, and writes one markdown
 file per email. Successfully processed emails are marked as read.
 
 Usage:
-    python main.py --label "CNBC/InvestmentClub" \
+    python main.py --cookies ~/cnbc_cookies.txt \
         --start 2026-01-01 --end 2026-06-01 --output ./cnbc_articles
 """
 
@@ -35,8 +35,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--label",
-        default="CNBC/InvestmentClub",
-        help="Gmail label (default: CNBC/InvestmentClub)",
+        default="CNBC investing",
+        help="Gmail label (default: CNBC investing)",
     )
     parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", help="End date (YYYY-MM-DD)")
