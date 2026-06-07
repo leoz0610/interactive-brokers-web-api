@@ -30,16 +30,28 @@ python main.py --label "CNBC/InvestmentClub" \
     --start 2026-01-01 --end 2026-06-01 --output ./cnbc_articles
 ```
 
-`--label`, `--start`, `--end`, and `--output` are CLI arguments. `--label`
-defaults to `CNBC/InvestmentClub` and `--output` to `./output`; if you omit
-`--start` or `--end` you're prompted for them. The email/username and the two
-passwords are resolved **once per run**:
+`--label`, `--start`, `--end`, `--output`, `--gmail-email`, and
+`--cnbc-username` are CLI arguments:
+
+- `--label` defaults to `CNBC/InvestmentClub`.
+- `--output` defaults to `./output`.
+- `--gmail-email` and `--cnbc-username` both default to
+  `chensili.uestc@gmail.com`.
+- If you omit `--start` or `--end` you're prompted for them.
+
+Only the two passwords are resolved at runtime (once per run) — masked via
+`getpass`:
 
 ```
-Gmail email: user@gmail.com
 Gmail app password: ****          # masked (getpass)
-CNBC username: user@example.com
 CNBC password: ****               # masked (getpass)
+```
+
+Override the accounts when needed:
+
+```bash
+python main.py --gmail-email me@gmail.com --cnbc-username me@example.com \
+    --start 2026-01-01 --end 2026-06-01
 ```
 
 Dates use `YYYY-MM-DD`. The end date is inclusive.

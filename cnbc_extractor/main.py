@@ -21,6 +21,10 @@ from datetime import datetime
 GMAIL_PASSWORD_ENV = "GMAIL_APP_PASSWORD"
 CNBC_PASSWORD_ENV = "CNBC_PASSWORD"
 
+# Default account used for both Gmail and the CNBC Investment Club login.
+# Override per run with --gmail-email / --cnbc-username.
+DEFAULT_EMAIL = "chensili.uestc@gmail.com"
+
 from cnbc_client import CnbcClient, CnbcLoginError
 from extractor import extract_article_content, extract_links_from_email
 from gmail_client import GmailClient
@@ -42,6 +46,16 @@ def parse_args() -> argparse.Namespace:
         "--output",
         default="./output",
         help="Output directory (default: ./output)",
+    )
+    parser.add_argument(
+        "--gmail-email",
+        default=DEFAULT_EMAIL,
+        help=f"Gmail email address (default: {DEFAULT_EMAIL})",
+    )
+    parser.add_argument(
+        "--cnbc-username",
+        default=DEFAULT_EMAIL,
+        help=f"CNBC Investment Club username (default: {DEFAULT_EMAIL})",
     )
     return parser.parse_args()
 
@@ -81,14 +95,17 @@ def main() -> int:
     )
     output_dir = args.output
 
-    # Credentials — resolved once per run. Passwords come from environment
-    # variables when set (see GMAIL_PASSWORD_ENV / CNBC_PASSWORD_ENV), otherwise
-    # the user is prompted interactively.
-    gmail_email = input("Gmail email: ").strip()
+    # Credentials — resolved once per run. The email/username come from CLI args
+    # (defaulting to DEFAULT_EMAIL); passwords come from environment variables
+    # when set (see GMAIL_PASSWORD_ENV / CNBC_PASSWORD_ENV), otherwise the user
+    # is prompted interactively.
+    gmail_email = args.gmail_email
+    cnbc_username = args.cnbc_username
+    print(f"Gmail email: {gmail_email}")
+    print(f"CNBC username: {cnbc_username}")
     gmail_password = _password_from_env_or_prompt(
         GMAIL_PASSWORD_ENV, "Gmail app password: "
     )
-    cnbc_username = input("CNBC username: ").strip()
     cnbc_password = _password_from_env_or_prompt(
         CNBC_PASSWORD_ENV, "CNBC password: "
     )
