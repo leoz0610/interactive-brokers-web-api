@@ -137,6 +137,24 @@ each extracted article (title, source URL, plain-text content). Emails with no
 CNBC links still produce a file noting that. Articles that fail to fetch/extract
 get a placeholder block instead of aborting the run.
 
+### Noise filtering
+
+Newsletter emails are full of non-analysis chrome, which is filtered out so the
+markdown only contains Jim's actual commentary:
+
+- **Link level** — CNBC tracking redirects are decoded to their real
+  destination, and links to stock-quote pages (`/quotes/...`), the Investing
+  Club homepage, and disclaimer/terms/privacy/unsubscribe pages are dropped. The
+  same article linked multiple times is fetched once.
+- **Content level** — boilerplate paragraphs (newsletter sign-up, the
+  "Charitable Trust" list, the trade-alert policy, the "SUBJECT TO OUR TERMS …
+  DISCLAIMER" notice) are stripped, and any link whose page is pure boilerplate
+  (a disclaimer-only page, a quote data dump, the nav strip) is skipped entirely.
+
+The run summary reports how many links were skipped as non-analysis. To tune the
+filters, edit the marker lists at the top of `extractor.py`
+(`_NON_ARTICLE_PATH_FRAGMENTS`, `_BOILERPLATE_MARKERS`, `_JUNK_MARKERS`).
+
 ## Troubleshooting CNBC access
 
 - **"sign-in wall" error on startup** — your cookies are stale or didn't capture

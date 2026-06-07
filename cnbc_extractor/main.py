@@ -24,7 +24,11 @@ GMAIL_PASSWORD_ENV = "GMAIL_APP_PASSWORD"
 DEFAULT_EMAIL = "chensili.uestc@gmail.com"
 
 from cnbc_client import CnbcClient, CnbcLoginError
-from extractor import extract_article_content, extract_links_from_email
+from extractor import (
+    extract_article_content,
+    extract_links_from_email,
+    is_meaningful_content,
+)
 from gmail_client import GmailClient
 from writer import write_email_markdown
 
@@ -123,6 +127,7 @@ def main() -> int:
     total_emails = 0
     processed = 0
     total_articles = 0
+    skipped_articles = 0
     failures = 0
 
     try:
@@ -148,6 +153,13 @@ def main() -> int:
                         continue
                     try:
                         extracted = extract_article_content(html)
+                        # Skip non-analysis pages (quotes, disclaimers, nav,
+                        # empty boilerplate) instead of writing them out.
+                        if not is_meaningful_content(extracted["content"]):
+                            print("  [skip] no analysis content (boilerplate/"
+                                  "quote/disclaimer)")
+                            skipped_articles += 1
+                            continue
                         articles.append(
                             {
                                 "url": url,
@@ -186,7 +198,8 @@ def main() -> int:
 
     print(
         f"\nProcessed {processed}/{total_emails} emails, "
-        f"{total_articles} articles extracted, {failures} failures."
+        f"{total_articles} articles extracted, "
+        f"{skipped_articles} non-analysis links skipped, {failures} failures."
     )
     return 0
 
