@@ -4,12 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This repo has two largely independent halves:
+This repo has three largely independent components, each with its own venv and `requirements.txt` and no imports across the boundaries:
 
 1. **`webapp/` + Docker** — a Flask demo that trades through Interactive Brokers' Client Portal Web API (live/paper brokerage).
 2. **`core/`** — a standalone Python backtesting and portfolio-analysis framework using Yahoo Finance historical data. It does **not** depend on the webapp or IBKR; it runs locally with its own venv.
+3. **`cnbc_extractor/`** — a standalone CLI that pulls CNBC Investing Club newsletter emails from Gmail and saves the linked articles as markdown. Unrelated to IBKR, Docker, and Yahoo Finance.
 
-The two share a design idea: `PortfolioManagerBase` (`core/portfolio_manager_base.py`) is an abstract interface meant to let strategies run against either a simulated portfolio or a live IBKR one, but only the simulated `PortfolioManager` exists today.
+The first two share a design idea: `PortfolioManagerBase` (`core/portfolio_manager_base.py`) is an abstract interface meant to let strategies run against either a simulated portfolio or a live IBKR one, but only the simulated `PortfolioManager` exists today.
 
 ---
 
@@ -81,3 +82,33 @@ python core/backtests/compare_returns.py AAPL MSFT GOOGL --period 1y
 python core/backtests/compare_returns.py --input core/backtests/input/sample_portfolio.csv
 ```
 Input needs at least `Ticker` and `MarketValue` columns (flexible aliases accepted). Returns are decomposed into price vs dividend return. Full docs: `core/backtests/COMPARE_RETURNS.md`. Ticker normalization for Yahoo Finance handles cases like `BRK.B` → `BRK-B`.
+
+---
+
+## Part 3 — CNBC Investing Club Email Extractor (`cnbc_extractor/`)
+
+A standalone CLI: read emails under a Gmail label → discover CNBC article links → fetch each article with an authenticated CNBC session → write one markdown file per email → mark processed emails read. Independent of `webapp/` and `core/`. Requires Python 3.10+ (uses `X | None`). Full feature docs: `cnbc_extractor/README.md`.
+
+### Setup & running
+```bash
+cd cnbc_extractor
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt    # requests, beautifulsoup4, readability-lxml, lxml
+python main.py --cookies ~/cnbc_cookies.txt --start 2026-01-01 --end 2026-06-01 --output ./cnbc_articles
+```
+Gmail/email handling uses stdlib only (`imaplib`, `email`, `http.cookiejar`); the third-party deps are just for CNBC fetching/parsing.
+
+### Two-sided auth (the central design constraint)
+- **Gmail** — IMAP + a Google **App Password** (not OAuth). Supplied via `GMAIL_APP_PASSWORD` env var, else prompted with `getpass`. Account defaults to a hardcoded address; override with `--gmail-email`.
+- **CNBC** — **cookie-based only**, no password path. Akamai Bot Manager blocks programmatic login, so the tool reuses an exported browser session. `--cookies` is **required** and auto-detects three formats (raw `Cookie:` header, Netscape `cookies.txt`, JSON). `CnbcClient` verifies the cookies against `VERIFY_URL` (the members page) before any emails are processed; cookies expire and must be re-exported when the sign-in wall reappears.
+
+### Pipeline & key files
+`main.py` orchestrates; the moving parts each live in one module:
+- **`gmail_client.py`** — IMAP connect, select the label (Gmail labels are IMAP folders), search by date (`SINCE`/`BEFORE`, end made inclusive), fetch bodies, mark read.
+- **`cnbc_client.py`** — cookie loading/auth + authenticated article fetch. Handles "view in browser" **stub** pages (`/public/...` that only carry a headline + READ MORE link) by following through to the real article, and de-dupes by canonical destination.
+- **`extractor.py`** — link discovery (decodes `link.cnbc.com/click/...` base64 tracking redirects) + article extraction (`readability-lxml`, with a table-aware fallback for table-based HTML bodies) + noise filtering. **The filter marker lists at the top of this file** (`_NON_ARTICLE_PATH_FRAGMENTS`, `_BOILERPLATE_MARKERS`, `_JUNK_MARKERS`, `_LEGAL_MARKERS`) are the tuning knobs for what counts as non-analysis chrome vs. real commentary — edit these when output includes junk or drops real content.
+- **`writer.py`** — markdown formatting, one file per email named `{YYYY-MM-DD}_{sanitized-subject}.md` (collisions get `_2`, `_3`, …). Email is marked read only **after** the file is written.
+- **`debug_links.py`** — developer aid only (not part of a normal run). Targets one email by subject substring (`--match`); without `--cookies` it dumps each link + filter verdict (Gmail-only), with `--cookies` it replays the full fetch→extract pipeline and `--dump-dir` saves raw fetched HTML.
+
+### Gotcha
+`cnbc_extractor/venv/` and `__pycache__/` are committed despite being in `.gitignore` (force-added). They are artifacts, not source — don't treat them as code.

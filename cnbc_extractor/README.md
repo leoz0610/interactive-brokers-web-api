@@ -7,6 +7,10 @@ are marked as read.
 
 This tool is **independent** of the rest of the repo (webapp and `core/`).
 
+> **New here?** See [RUNNING.md](RUNNING.md) for a step-by-step first-run
+> walkthrough that resolves both credentials (Gmail App Password + CNBC cookie
+> file) up front. The sections below are the full reference.
+
 ## Setup
 
 ```bash
@@ -84,6 +88,9 @@ JavaScript.
 too.)
 
 ## Usage
+
+For a guided first run with both credentials resolved before you start, follow
+[RUNNING.md](RUNNING.md). The reference below covers all arguments and options.
 
 ```bash
 python main.py --cookies ~/cnbc_cookies.txt \
