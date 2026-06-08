@@ -25,9 +25,12 @@ DEFAULT_EMAIL = "chensili.uestc@gmail.com"
 
 from cnbc_client import CnbcClient, CnbcLoginError
 from extractor import (
+    canonical_article_key,
     extract_article_content,
     extract_links_from_email,
+    find_article_link,
     is_meaningful_content,
+    is_stub_page,
 )
 from gmail_client import GmailClient
 from writer import write_email_markdown
@@ -144,6 +147,7 @@ def main() -> int:
                     em.get("body_html"), em.get("body_text")
                 )
                 articles = []
+                seen_keys: set[str] = set()
                 for url in links:
                     print(f"  Fetching article: {url}")
                     html = cnbc.fetch_article(url)
@@ -152,12 +156,31 @@ def main() -> int:
                         failures += 1
                         continue
                     try:
+                        # "View in browser" stub pages only hold a headline and a
+                        # READ MORE link — follow it to the real article.
+                        if is_stub_page(html):
+                            real_url = find_article_link(html, base_url=url)
+                            if real_url:
+                                print(f"  Following to article: {real_url}")
+                                real_html = cnbc.fetch_article(real_url)
+                                if real_html is not None:
+                                    html, url = real_html, real_url
+
+                        # The same article is often linked twice (a "view in
+                        # browser" stub and a direct link); the stub's true
+                        # destination only emerges after following it, so
+                        # de-duplicate here, once the final URL is known.
+                        key = canonical_article_key(url)
+                        if key in seen_keys:
+                            print("  [skip] duplicate of an already-saved article")
+                            continue
+
                         extracted = extract_article_content(html)
                         # Skip non-analysis pages (quotes, disclaimers, nav,
-                        # empty boilerplate) instead of writing them out.
+                        # stubs, empty boilerplate) instead of writing them out.
                         if not is_meaningful_content(extracted["content"]):
                             print("  [skip] no analysis content (boilerplate/"
-                                  "quote/disclaimer)")
+                                  "quote/disclaimer/stub)")
                             skipped_articles += 1
                             continue
                         articles.append(
@@ -167,6 +190,7 @@ def main() -> int:
                                 "content": extracted["content"],
                             }
                         )
+                        seen_keys.add(key)
                         total_articles += 1
                     except Exception as exc:
                         print(f"  [warn] Extraction failed for {url}: {exc}")

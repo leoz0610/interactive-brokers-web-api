@@ -15,7 +15,7 @@ module filters those out at two levels:
 
 import base64
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 from readability import Document
@@ -23,21 +23,41 @@ from readability import Document
 # Matches bare URLs in plain-text bodies.
 _URL_RE = re.compile(r"https?://[^\s<>\"')]+", re.IGNORECASE)
 
-# Path fragments whose pages are never Jim's analysis. Checked against the
-# *resolved* destination path (after decoding tracking redirects).
+# A real CNBC article path looks like one of these (vs. a /public/ stub, a quote
+# page, or a landing page).
+_ARTICLE_PATH_RE = re.compile(
+    r"(/\d{4}/\d{2}/\d{2}/|/id/\d+|/investingclub/.+|/select/.+|\.html$)",
+    re.IGNORECASE,
+)
+
+# Markers that identify a "view in browser" stub page rather than the article.
+_STUB_MARKERS = (
+    "view in browser",
+    "latest cramer news",
+    "read more",
+    "read m ore",
+)
+
+# Path fragments whose pages are never Jim's analysis. Checked as substrings of
+# the *resolved* destination path (after decoding tracking redirects).
 _NON_ARTICLE_PATH_FRAGMENTS = (
-    "/quotes/",          # stock quote pages
-    "/disclaimer",
-    "/terms",            # terms of service / terms and conditions
+    "/quotes/",             # stock quote pages
+    "disclaimer",
+    "terms-of-service",     # e.g. /nbcuniversal-terms-of-service/
+    "terms-of-use",
+    "terms-and-conditions",
+    "nbcuniversal-terms",
+    "/terms",
+    "privacy-policy",
     "/privacy",
-    "/unsubscribe",
+    "unsubscribe",
     "/preferences",
-    "/manage-",          # manage subscription / preferences
-    "/cookie",
+    "/manage-",             # manage subscription / preferences
+    "cookie",
     "/applemusic",
     "/apps",
-    "/about-cnbc",
-    "/digital-products",
+    "about-cnbc",
+    "digital-products",
 )
 
 # Resolved paths that are landing pages, not articles (matched exactly, ignoring
@@ -66,6 +86,51 @@ _BOILERPLATE_MARKERS = (
     "(see here for a full list",
     "see jim cramer's top 10",
     "questions, comments, suggestions for the cnbc investing club",
+    # Email/page footer chrome.
+    "all rights reserved",
+    "a versant media company",
+    "englewood cliffs",
+    "sylvan avenue",
+    "data is a real-time snapshot",
+    "data is delayed at least",
+    "data also provided by",
+    "global business and financial news",
+    # "View in browser" stub chrome and footer link strip.
+    "view in browser",
+    "latest cramer news",
+    "read more",
+    "read m ore",
+    "jim cramer twitter",
+    "need help with your investing club subscription",
+    "manage newsletters",
+    "digital products",
+    "join the cnbc panel",
+    "privacy policy",
+    "terms of service",
+    "unsubscribe",
+    "feedback",
+    # Market nav ticker strip.
+    "us eur asia bonds oil gold",
+)
+
+# The standard Investing Club footer is always appended as a *contiguous tail*
+# of Jim's analysis (subscriber blurb → trade-alert policy → "SUBJECT TO OUR
+# TERMS … DISCLAIMER" notice). On real cnbc.com article pages the whole body is
+# delivered as a single undelimited text block, so per-paragraph stripping would
+# discard the entire article. Instead we truncate the text at the earliest of
+# these footer-start markers, keeping everything before it. Each marker reliably
+# marks the start of that trailing footer, never legitimate mid-article prose.
+_FOOTER_MARKERS = (
+    "as a subscriber to the cnbc investing club",
+    "you will receive a trade alert",
+    "jim waits 45 minutes",
+    "the above investing club information is subject to",
+    "(see here for a full list",
+    "see jim cramer's top 10",
+    "questions, comments, suggestions for the cnbc investing club",
+    "sign up for my",
+    "sign up for the",
+    "for a full list of the stocks at jim cramer",
 )
 
 # A whole "article" that matches these (and little else) is junk: a quote-page
@@ -73,6 +138,15 @@ _BOILERPLATE_MARKERS = (
 _JUNK_MARKERS = (
     "us eur asia bonds oil gold",   # market nav ticker strip
     "click to read the disclaimer",
+)
+
+# If content prominently contains these, it's a legal/terms page, not analysis.
+_LEGAL_MARKERS = (
+    "cnbc+ supplemental terms",
+    "cnbc+ services",
+    "nbcuniversal terms of service",
+    "these terms of service",
+    "terms and conditions of use",
 )
 
 # Minimum length of meaningful text for an article to be worth keeping.
@@ -130,6 +204,17 @@ def _is_useful_article_url(url: str) -> bool:
     return True
 
 
+def canonical_article_key(url: str) -> str:
+    """Normalized resolved-destination key for the same article linked via
+    different URLs (e.g. a `/public/` "view in browser" stub vs a direct tracking
+    redirect). Tracking redirects are decoded and query/fragment dropped, so the
+    caller can de-duplicate articles whose duplicate links only become apparent
+    after a stub is followed to its real destination.
+    """
+    dest = _resolve_destination(url)
+    return urlsplit(dest)._replace(query="", fragment="").geturl()
+
+
 def extract_links_from_email(
     html_body: str | None, text_body: str | None
 ) -> list[str]:
@@ -151,8 +236,7 @@ def extract_links_from_email(
             return
         # De-duplicate on the resolved destination (ignoring tracking query
         # params) so the same article linked twice isn't fetched twice.
-        dest = _resolve_destination(url)
-        key = urlsplit(dest)._replace(query="", fragment="").geturl()
+        key = canonical_article_key(url)
         if key in seen_dest:
             return
         seen_dest.add(key)
@@ -174,9 +258,11 @@ def extract_links_from_email(
 def extract_article_content(html: str) -> dict:
     """Extract {title, content} from an article's raw HTML.
 
-    Uses readability-lxml to isolate the main article, then BeautifulSoup to
-    flatten it to plain text, then strips boilerplate paragraphs (disclaimers,
-    terms, newsletter sign-up, trade-alert policy, etc.).
+    Uses readability-lxml to isolate the main article. When that fails — e.g. the
+    table-based HTML of a newsletter "view in browser" (`/public/...`) page,
+    where readability often returns only the footer — it falls back to a
+    table-aware extraction over the full document. Boilerplate paragraphs
+    (disclaimers, terms, newsletter sign-up, footer chrome) are then stripped.
     """
     doc = Document(html)
 
@@ -184,6 +270,8 @@ def extract_article_content(html: str) -> dict:
         title = doc.short_title()
     except Exception:
         title = ""
+    if not title:
+        title = _title_from_html(html)
 
     try:
         summary_html = doc.summary(html_partial=True)
@@ -191,19 +279,60 @@ def extract_article_content(html: str) -> dict:
         summary_html = html
 
     content = _strip_boilerplate(_html_to_text(summary_html))
+
+    # readability missed the body (common on table-based newsletter pages):
+    # fall back to a table-aware sweep of the whole document.
+    if not is_meaningful_content(content):
+        fallback = _strip_boilerplate(_extract_full_text(html))
+        if len(fallback) > len(content):
+            content = fallback
+
     return {"title": title or "(untitled)", "content": content}
+
+
+def is_stub_page(html: str) -> bool:
+    """True if the page is a 'view in browser' stub whose real article is behind
+    a READ MORE link (newsletter web versions), not the article itself.
+    """
+    text = BeautifulSoup(html, "lxml").get_text(separator=" ", strip=True).lower()
+    hits = sum(1 for m in _STUB_MARKERS if m in text)
+    # A stub has the tell-tale chrome; require "view in browser" plus one more so
+    # a real article that merely says "read more" somewhere isn't misclassified.
+    return ("view in browser" in text and hits >= 2)
+
+
+def find_article_link(html: str, base_url: str = "") -> str | None:
+    """Return the first real-article link found in a page (e.g. the READ MORE /
+    headline link on a stub page). Returns None if none is found.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    for anchor in soup.find_all("a", href=True):
+        href = urljoin(base_url, anchor["href"].strip())
+        if not _is_cnbc_url(href):
+            continue
+        dest = _resolve_destination(href)
+        path = urlsplit(dest).path
+        if "/public/" in path:
+            continue
+        if not _is_useful_article_url(href):
+            continue
+        if _ARTICLE_PATH_RE.search(path):
+            return href
+    return None
 
 
 def is_meaningful_content(content: str) -> bool:
     """False if the (boilerplate-stripped) content is empty or pure junk.
 
     Lets the caller skip non-analysis "articles" — quote-page data dumps, the
-    nav strip, disclaimer-only pages — entirely.
+    nav strip, disclaimer-only pages, and terms/legal pages — entirely.
     """
     text = (content or "").strip()
     if len(text) < _MIN_MEANINGFUL_CHARS:
         return False
     lowered = text.lower()
+    if any(marker in lowered for marker in _LEGAL_MARKERS):
+        return False
     if any(marker in lowered for marker in _JUNK_MARKERS):
         # Junk marker present and almost nothing else of substance.
         non_junk = lowered
@@ -219,11 +348,80 @@ def _is_boilerplate_paragraph(paragraph: str) -> bool:
     return any(marker in lowered for marker in _BOILERPLATE_MARKERS)
 
 
+def _truncate_at_footer(text: str) -> str:
+    """Cut `text` at the earliest Investing Club footer marker.
+
+    Real cnbc.com article bodies arrive as one undelimited block with the
+    standard subscriber/disclaimer footer tacked onto the end. Truncating at the
+    first footer marker keeps Jim's analysis and drops the footer, even when
+    there are no paragraph breaks to strip on.
+    """
+    lowered = text.lower()
+    cut = min(
+        (lowered.find(m) for m in _FOOTER_MARKERS if m in lowered),
+        default=-1,
+    )
+    return text[:cut].strip() if cut != -1 else text
+
+
 def _strip_boilerplate(text: str) -> str:
-    """Drop boilerplate paragraphs (disclaimers, terms, sign-ups) from content."""
+    """Drop boilerplate from content.
+
+    First truncate the trailing Investing Club footer (handles the single-block
+    article bodies CNBC serves), then drop any remaining standalone boilerplate
+    paragraphs (disclaimers, terms, sign-ups, nav chrome) from what's left.
+    """
+    text = _truncate_at_footer(text)
     paragraphs = text.split("\n\n")
     kept = [p for p in paragraphs if p.strip() and not _is_boilerplate_paragraph(p)]
     return "\n\n".join(kept).strip()
+
+
+def _title_from_html(html: str) -> str:
+    """Best-effort title from <title> / og:title / first heading."""
+    soup = BeautifulSoup(html, "lxml")
+    og = soup.find("meta", attrs={"property": "og:title"})
+    if og and og.get("content"):
+        return og["content"].strip()
+    if soup.title and soup.title.string:
+        return soup.title.string.strip()
+    for level in ("h1", "h2"):
+        h = soup.find(level)
+        if h and h.get_text(strip=True):
+            return h.get_text(strip=True)
+    return ""
+
+
+def _extract_full_text(html: str) -> str:
+    """Table-aware text sweep over the whole document.
+
+    Fallback for pages readability can't parse (e.g. table-based newsletter HTML).
+    Removes non-content elements, then collects text from block-level and
+    table-cell elements, de-duplicating repeated paragraphs.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    for tag in soup(["script", "style", "noscript", "head", "nav",
+                     "header", "footer", "form", "button"]):
+        tag.decompose()
+
+    blocks = soup.find_all(
+        ["p", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6",
+         "td", "dd", "figcaption"]
+    )
+
+    paragraphs: list[str] = []
+    seen: set[str] = set()
+    for block in blocks:
+        # Skip cells that merely wrap other collected blocks (avoid duplication).
+        if block.find(["p", "li", "td", "blockquote"]):
+            continue
+        text = block.get_text(separator=" ", strip=True)
+        if len(text) < 2 or text in seen:
+            continue
+        seen.add(text)
+        paragraphs.append(text)
+
+    return "\n\n".join(paragraphs)
 
 
 def _html_to_text(html: str) -> str:

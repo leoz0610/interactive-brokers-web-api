@@ -151,9 +151,47 @@ markdown only contains Jim's actual commentary:
   DISCLAIMER" notice) are stripped, and any link whose page is pure boilerplate
   (a disclaimer-only page, a quote data dump, the nav strip) is skipped entirely.
 
+Some newsletter links point to a "view in browser" (`/public/...`) **stub** page
+that only contains the headline and a *READ MORE* link, not the article. The tool
+detects these stubs and follows the READ MORE link to the real cnbc.com article
+before extracting. (For pages that do carry the body but in table-based HTML,
+which readability mis-parses, it also falls back to a table-aware sweep.)
+
 The run summary reports how many links were skipped as non-analysis. To tune the
 filters, edit the marker lists at the top of `extractor.py`
-(`_NON_ARTICLE_PATH_FRAGMENTS`, `_BOILERPLATE_MARKERS`, `_JUNK_MARKERS`).
+(`_NON_ARTICLE_PATH_FRAGMENTS`, `_BOILERPLATE_MARKERS`, `_JUNK_MARKERS`,
+`_LEGAL_MARKERS`).
+
+## Debugging extraction (`debug_links.py`)
+
+When an email produces empty or wrong output, use `debug_links.py` to see exactly
+where the pipeline breaks, without re-running the whole tool. It targets a single
+email by subject substring and works in two layers:
+
+1. **Link discovery** (Gmail only — no CNBC cookies needed). Dumps every `<a
+   href>` in the email, its link text, and the filter verdict (kept, or which
+   rule dropped it). Use this when the markdown says *"No CNBC article links
+   found"* to confirm whether the article link even survived discovery.
+
+   ```bash
+   python debug_links.py --match "Cardinal Health" --start 2026-05-01 --end 2026-05-01
+   ```
+
+2. **Full fetch + extract pipeline** (add `--cookies`). For each kept link it
+   reproduces `main.py`: fetch → stub-detect/follow → extract → meaningfulness,
+   printing each verdict and a content snippet. Use this when links *are* found
+   but no content lands in the markdown — it shows whether the page is a sign-in
+   wall, a stub that wasn't followed, or (the common case) an article whose body
+   extracts to empty. Add `--dump-dir` to save each fetched page so you can
+   inspect the raw HTML structure (e.g. where the article body actually lives).
+
+   ```bash
+   python debug_links.py --match "Cardinal Health" --start 2026-05-01 --end 2026-05-01 \
+       --cookies ~/cnbc_cookies.txt --dump-dir /tmp/cnbc_dump
+   ```
+
+The Gmail app password is read from `$GMAIL_APP_PASSWORD` or prompted for, same as
+`main.py`. This script is a developer aid only; it isn't part of the normal run.
 
 ## Troubleshooting CNBC access
 
@@ -176,3 +214,4 @@ you need to point the check at a different URL.
 | `cnbc_client.py` | Cookie-based auth + authenticated article fetch |
 | `extractor.py` | Email link discovery + readability article extraction |
 | `writer.py` | Markdown formatting and file writing |
+| `debug_links.py` | Developer diagnostic: dump an email's links + filter verdicts, and optionally run the full fetch/extract pipeline (see "Debugging extraction") |
