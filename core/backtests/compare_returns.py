@@ -246,6 +246,13 @@ def compute_return(df: pd.DataFrame) -> dict:
     paid divided by the starting adjusted price).  Price return is
     the remainder: total_return - dividend_return.
     """
+    # yfinance often appends a placeholder row for the most recent session
+    # whose Close is NaN (the official close hasn't settled yet). Drop any
+    # rows with a missing Close so start/end prices come from real data;
+    # otherwise end_price becomes NaN and every return collapses to N/A.
+    if df is not None and not df.empty and "Close" in df.columns:
+        df = df[df["Close"].notna()]
+
     if df is None or df.empty or len(df) < 2:
         return {
             "total_return_pct": None,
