@@ -17,6 +17,12 @@ Keep generated reports and session artifacts in `outputs/`. Do not commit genera
 - Do not switch to, commit on, merge into, or base work on `main` unless the user explicitly requests upstream synchronization.
 - Never discard uncommitted changes. If the tree is dirty, inspect and preserve them.
 
+## Pull request policy
+
+- For work intended for a pull request, create a new feature branch from `customized-changes` and make all iterative changes and commits on that feature branch.
+- When the user asks to create a pull request, target `customized-changes` as the pull request's base branch.
+- Treat this feature-branch workflow and PR base as the defaults unless the user explicitly requests different behavior.
+
 ## Preferred entry points
 
 Use the repository launchers instead of invoking source scripts directly:
