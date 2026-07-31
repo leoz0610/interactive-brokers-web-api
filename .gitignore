@@ -162,3 +162,15 @@ cython_debug/
 #.idea/
 
 .DS_Store
+
+# Codex workflow environments, secrets, and generated reports
+.venvs/
+.env.*
+*.cookies
+cookies*.txt
+outputs/**
+!outputs/.gitkeep
+!outputs/returns/
+!outputs/returns/.gitkeep
+!outputs/cnbc/
+!outputs/cnbc/.gitkeep

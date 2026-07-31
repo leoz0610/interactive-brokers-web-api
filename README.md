@@ -23,3 +23,7 @@ docker-compose up
 ```
 docker exec -it ibkr bash
 ```
+
+## Codex workflows
+
+Open the repository root as the Codex project folder. The root `AGENTS.md` supplies project instructions, and [docs/CODEX_WORKFLOWS.md](docs/CODEX_WORKFLOWS.md) explains how to bootstrap and run the portfolio-return and CNBC extraction workflows.
