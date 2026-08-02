@@ -44,6 +44,9 @@ The launchers verify the source branch lineage and keep default output under thi
 ## CNBC extractor behavior and safety
 
 - Requires Python 3.10+, a Gmail App Password, and an exported CNBC cookie file.
+- This workstation has Python 3.13 installed at `/usr/local/bin/python3.13`; use `scripts/setup.sh` to create or refresh the repository virtual environments.
+- The confirmed Gmail account is `chensili.uestc@gmail.com`, the Gmail label is `CNBC investing`, and the usual cookie file is `/Users/silichen/Documents/cnbc_extract/cookies.txt`. Still confirm the inclusive dates and output location for each run, and verify that the cookie file exists and remains valid.
+- The Gmail App Password is stored in macOS Keychain under account `chensili.uestc@gmail.com` and service `cnbc-extractor-gmail`. Retrieve it directly into `GMAIL_APP_PASSWORD` for the extractor process with `security find-generic-password`; never print, log, or write its value. Keychain access may require sandbox escalation or macOS approval.
 - A successful normal run writes Markdown and marks processed Gmail messages read.
 - Before running, confirm Gmail account, Gmail label, inclusive start/end dates, cookies path, and output location.
 - Prefer `cnbc_extractor/debug_links.py` for diagnosis because normal extraction changes Gmail read state.
