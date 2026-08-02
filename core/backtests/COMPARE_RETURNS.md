@@ -186,6 +186,13 @@ All returns are broken down into **price return** and **dividend return**:
 - **Price Return** — the portion of total return attributable to price appreciation alone, calculated as `Total Return - Dividend Return`.
 - **Dividend Return** — the portion of total return attributable to dividends received during the period, calculated as `sum(dividends) / start_price`.
 
+For an approximately one-year request, a security with less than 80% of the
+requested market history receives a clearly marked projected 1-year return.
+The projection compounds the available-period total return to one year:
+`(end_price / start_price)^(365.25 / available_days) - 1`. The observed
+available-period return remains in the output. Projections are estimates and
+do not imply that the same performance will continue.
+
 This decomposition appears in both the ticker-list mode terminal output and the portfolio markdown report (Holdings Summary, Top Outperformers, and Top Underperformers tables).
 
 **Note:** The dividend return uses a simple yield calculation (total dividends divided by starting price) rather than a time-weighted reinvestment model. This provides a clear, intuitive breakdown but may not perfectly sum to the total return for holdings with large, frequent dividend payments over long periods.
