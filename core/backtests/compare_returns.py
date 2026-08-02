@@ -313,6 +313,27 @@ def compute_return(df: pd.DataFrame) -> dict:
     }
 
 
+def _select_requested_return(
+    stats: dict, requested_days: int
+) -> Tuple[Optional[float], bool]:
+    """Select the observed return, or a projected 1Y return for partial data."""
+    observed_return = stats.get("total_return_pct")
+    start_date = stats.get("start_date")
+    end_date = stats.get("end_date")
+    if observed_return is None or not start_date or not end_date:
+        return observed_return, False
+
+    actual_days = (
+        datetime.strptime(end_date, "%Y-%m-%d")
+        - datetime.strptime(start_date, "%Y-%m-%d")
+    ).days
+    is_one_year_request = 300 <= requested_days <= 400
+    has_partial_history = actual_days < requested_days * 0.8
+    if is_one_year_request and has_partial_history:
+        return stats.get("annualized_return_pct"), True
+    return observed_return, False
+
+
 # ---------------------------------------------------------------------------
 # Core analysis
 # ---------------------------------------------------------------------------
@@ -340,7 +361,15 @@ def analyze_portfolio(
     logger.info(f"Fetching benchmark {benchmark_ticker}...")
     bench_df = fetch_prices(benchmark_ticker, start_date, end_date)
     bench_stats = compute_return(bench_df)
-    bench_return = bench_stats["total_return_pct"]
+    requested_days = (
+        datetime.strptime(end_date, "%Y-%m-%d")
+        - datetime.strptime(start_date, "%Y-%m-%d")
+    ).days
+    bench_return, bench_return_projected = _select_requested_return(
+        bench_stats, requested_days
+    )
+    bench_stats["requested_return_pct"] = bench_return
+    bench_stats["requested_return_projected"] = bench_return_projected
 
     # -- Holdings --
     total_mv = holdings["MarketValue"].sum()
@@ -357,6 +386,9 @@ def analyze_portfolio(
 
         price_df = fetch_prices(ticker, start_date, end_date)
         stats = compute_return(price_df)
+        requested_return, return_projected = _select_requested_return(
+            stats, requested_days
+        )
 
         status = "OK"
         notes = ""
@@ -367,18 +399,16 @@ def analyze_portfolio(
             data_issues.append({"ticker": ticker, "reason": notes})
         elif price_df is not None:
             actual_days = (price_df.index[-1] - price_df.index[0]).days
-            requested_days = (
-                datetime.strptime(end_date, "%Y-%m-%d")
-                - datetime.strptime(start_date, "%Y-%m-%d")
-            ).days
             if actual_days < requested_days * 0.8:
                 status = "PARTIAL"
                 notes = f"Only {actual_days}d of data (requested ~{requested_days}d)"
+                if return_projected:
+                    notes += "; 1Y return projected from available history"
                 data_issues.append({"ticker": ticker, "reason": notes})
 
         excess = None
-        if stats["total_return_pct"] is not None and bench_return is not None:
-            excess = stats["total_return_pct"] - bench_return
+        if requested_return is not None and bench_return is not None:
+            excess = requested_return - bench_return
 
         holding_results.append(
             {
@@ -390,6 +420,8 @@ def analyze_portfolio(
                 "start_price": stats["start_price"],
                 "end_price": stats["end_price"],
                 "return_pct": stats["total_return_pct"],
+                "requested_return_pct": requested_return,
+                "return_projected": return_projected,
                 "price_return_pct": stats["price_return_pct"],
                 "dividend_return_pct": stats["dividend_return_pct"],
                 "annualized_return_pct": stats["annualized_return_pct"],
@@ -410,9 +442,9 @@ def analyze_portfolio(
     portfolio_weighted_excess = 0.0
     valid_weight_sum = 0.0
     for h in holding_results:
-        if h["return_pct"] is not None:
+        if h["requested_return_pct"] is not None:
             w = h["weight"] / 100
-            portfolio_weighted_return += w * h["return_pct"]
+            portfolio_weighted_return += w * h["requested_return_pct"]
             valid_weight_sum += w
             if h["excess_return_pct"] is not None:
                 portfolio_weighted_excess += w * h["excess_return_pct"]
@@ -469,6 +501,18 @@ def compare_tickers(
         else:
             benchmark_results[sym] = {"error": "no data"}
 
+    requested_days = (
+        datetime.strptime(end_date, "%Y-%m-%d")
+        - datetime.strptime(start_date, "%Y-%m-%d")
+    ).days
+    for stats in list(ticker_results.values()) + list(benchmark_results.values()):
+        if "error" not in stats:
+            requested_return, projected = _select_requested_return(
+                stats, requested_days
+            )
+            stats["requested_return_pct"] = requested_return
+            stats["requested_return_projected"] = projected
+
     return {
         "start_date": start_date,
         "end_date": end_date,
@@ -483,7 +527,8 @@ def print_comparison(results: dict) -> None:
 
     header = (
         f"{'Symbol':<10} {'Type':<12} {'Start':>10} {'End':>10} "
-        f"{'TotalRet':>10} {'PriceRet':>10} {'DivRet':>10} "
+        f"{'ReqReturn':>10} {'Projected':>10} {'AvailRet':>10} "
+        f"{'PriceRet':>10} {'DivRet':>10} "
         f"{'Annual':>10} {'Vol':>10} {'Max DD':>10}"
     )
     print("\n" + header)
@@ -497,6 +542,8 @@ def print_comparison(results: dict) -> None:
             f"{symbol:<10} {label:<12} "
             f"{fmt_dollar(stats['start_price']):>10} "
             f"{fmt_dollar(stats['end_price']):>10} "
+            f"{fmt_pct(stats['requested_return_pct']):>10} "
+            f"{('Yes' if stats['requested_return_projected'] else 'No'):>10} "
             f"{fmt_pct(stats['total_return_pct']):>10} "
             f"{fmt_pct(stats['price_return_pct']):>10} "
             f"{fmt_pct(stats['dividend_return_pct']):>10} "
@@ -526,7 +573,7 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
         lines.append(text)
 
     bench = results["benchmark_stats"]
-    bench_ret = bench["total_return_pct"]
+    bench_ret = bench["requested_return_pct"]
     holdings = results["holdings"]
     valid_holdings = [h for h in holdings if h["status"] != "ERROR"]
 
@@ -545,7 +592,7 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
     ln(f"| Period | {results['start_date']} to {results['end_date']} |")
     ln(f"| Holdings Analyzed | {results['num_valid']} of {results['num_holdings']} |")
     ln(f"| Total Market Value | {fmt_dollar(results['total_market_value'])} |")
-    ln(f"| Benchmark Return | {fmt_pct(bench_ret)} |")
+    ln(f"| Benchmark Requested-Period Return | {fmt_pct(bench_ret)} |")
     ln(
         f"| Portfolio Weighted Return | {fmt_pct(results['portfolio_weighted_return_pct'])} |"
     )
@@ -559,10 +606,11 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
     ln()
     ln(
         "| Ticker | MarketValue | Weight | StartDate | EndDate | StartPrice "
-        "| EndPrice | TotalReturn | PriceReturn | DividendReturn "
+        "| EndPrice | RequestedReturn | Projected | AvailablePeriodReturn "
+        "| PriceReturn | DividendReturn "
         "| BenchmarkReturn | ExcessVsBenchmark | Status |"
     )
-    ln("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    ln("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for h in holdings:
         ln(
             f"| {h['ticker']} "
@@ -572,6 +620,8 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
             f"| {h['end_date'] or 'N/A'} "
             f"| {fmt_dollar(h['start_price'])} "
             f"| {fmt_dollar(h['end_price'])} "
+            f"| {fmt_pct(h['requested_return_pct'])} "
+            f"| {'Yes' if h['return_projected'] else 'No'} "
             f"| {fmt_pct(h['return_pct'])} "
             f"| {fmt_pct(h['price_return_pct'])} "
             f"| {fmt_pct(h['dividend_return_pct'])} "
@@ -592,12 +642,13 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
     top = ranked_by_excess[:top_n]
     if top:
         ln(
-            "| Rank | Ticker | TotalReturn | PriceReturn | DividendReturn | Excess vs Benchmark |"
+            "| Rank | Ticker | RequestedReturn | AvailablePriceReturn "
+            "| AvailableDividendReturn | Excess vs Benchmark |"
         )
         ln("|---|---|---|---|---|---|")
         for i, h in enumerate(top, 1):
             ln(
-                f"| {i} | {h['ticker']} | {fmt_pct(h['return_pct'])} "
+                f"| {i} | {h['ticker']} | {fmt_pct(h['requested_return_pct'])} "
                 f"| {fmt_pct(h['price_return_pct'])} | {fmt_pct(h['dividend_return_pct'])} "
                 f"| {fmt_pct(h['excess_return_pct'])} |"
             )
@@ -614,12 +665,13 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
     bottom = sorted(bottom, key=lambda h: h["excess_return_pct"])
     if bottom:
         ln(
-            "| Rank | Ticker | TotalReturn | PriceReturn | DividendReturn | Excess vs Benchmark |"
+            "| Rank | Ticker | RequestedReturn | AvailablePriceReturn "
+            "| AvailableDividendReturn | Excess vs Benchmark |"
         )
         ln("|---|---|---|---|---|---|")
         for i, h in enumerate(bottom, 1):
             ln(
-                f"| {i} | {h['ticker']} | {fmt_pct(h['return_pct'])} "
+                f"| {i} | {h['ticker']} | {fmt_pct(h['requested_return_pct'])} "
                 f"| {fmt_pct(h['price_return_pct'])} | {fmt_pct(h['dividend_return_pct'])} "
                 f"| {fmt_pct(h['excess_return_pct'])} |"
             )
@@ -655,7 +707,7 @@ def _generate_insights(results: dict, ranked: List[dict]) -> List[str]:
     paragraphs = []
     holdings = results["holdings"]
     valid = [h for h in holdings if h["status"] != "ERROR"]
-    bench_ret = results["benchmark_stats"]["total_return_pct"]
+    bench_ret = results["benchmark_stats"]["requested_return_pct"]
     pw_ret = results["portfolio_weighted_return_pct"]
     pw_excess = results["portfolio_weighted_excess_pct"]
 
@@ -799,7 +851,7 @@ def main():
         print(f"  Portfolio: {os.path.basename(args.input_file)}")
         print(f"  Period:    {start_date} to {end_date}")
         print(
-            f"  Benchmark: {args.benchmark} ({fmt_pct(results['benchmark_stats']['total_return_pct'])})"
+            f"  Benchmark: {args.benchmark} ({fmt_pct(results['benchmark_stats']['requested_return_pct'])})"
         )
         print(
             f"  Portfolio weighted return: {fmt_pct(results['portfolio_weighted_return_pct'])}"
