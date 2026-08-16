@@ -2,6 +2,9 @@
 
 A command-line tool that compares stock returns against a benchmark index. Supports two modes: quick ticker comparisons and full portfolio analysis from a spreadsheet.
 
+Yahoo Finance is the source for return history, the latest price, trailing
+52-week highs, and current forward P/E metadata.
+
 ## Setup
 
 Install dependencies (from the project root):
@@ -194,6 +197,27 @@ available-period return remains in the output. Projections are estimates and
 do not imply that the same performance will continue.
 
 This decomposition appears in both the ticker-list mode terminal output and the portfolio markdown report (Holdings Summary, Top Outperformers, and Top Underperformers tables).
+
+## Current Market Snapshot
+
+Each ticker also receives a Yahoo market snapshot containing:
+
+- **Latest Price** and its trading date.
+- **52-Week High** and the date on which that high occurred.
+- **From 52-Week High** — `(latest price / 52-week high) - 1`; values are
+  negative when the latest price is below the high and zero when it is at the high.
+- **Forward P/E** — Yahoo's current analyst-estimate-based forward P/E, when available.
+- **Trailing P/E** — Yahoo's current price divided by trailing twelve-month earnings,
+  when available.
+
+The portfolio Overview also displays the selected benchmark's current forward
+and trailing P/E values when Yahoo supplies them.
+
+These values always describe the latest trailing year and are independent of
+the return period selected with `--period`, `--start`, or `--end`. P/E values
+may be unavailable for funds, unprofitable companies, or securities without
+analyst estimates; a metadata failure is reported as `N/A` and does not stop
+the return analysis.
 
 **Note:** The dividend return uses a simple yield calculation (total dividends divided by starting price) rather than a time-weighted reinvestment model. This provides a clear, intuitive breakdown but may not perfectly sum to the total return for holdings with large, frequent dividend payments over long periods.
 
