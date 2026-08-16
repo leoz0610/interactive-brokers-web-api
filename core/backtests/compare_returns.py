@@ -139,6 +139,13 @@ def fmt_dollar(value: Optional[float]) -> str:
     return f"${value:,.2f}"
 
 
+def fmt_number(value: Optional[float]) -> str:
+    """Format a plain numeric value."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return "N/A"
+    return f"{value:,.2f}"
+
+
 # ---------------------------------------------------------------------------
 # Spreadsheet loading
 # ---------------------------------------------------------------------------
@@ -229,6 +236,61 @@ def fetch_prices(ticker: str, start_date: str, end_date: str) -> Optional[pd.Dat
     except Exception as e:
         logger.warning(f"Failed to fetch data for {ticker}: {e}")
         return None
+
+
+def compute_market_snapshot(df: Optional[pd.DataFrame]) -> dict:
+    """Compute latest-price and trailing 52-week-high statistics."""
+    empty = {
+        "latest_price": None,
+        "latest_price_date": None,
+        "fifty_two_week_high": None,
+        "fifty_two_week_high_date": None,
+        "from_fifty_two_week_high_pct": None,
+    }
+    if df is None or df.empty or "Close" not in df.columns or "High" not in df.columns:
+        return empty
+
+    usable = df[df["Close"].notna() & df["High"].notna()]
+    if usable.empty:
+        return empty
+
+    latest_price = float(usable["Close"].iloc[-1])
+    high_position = int(usable["High"].values.argmax())
+    high_price = float(usable["High"].iloc[high_position])
+    high_date = usable.index[high_position]
+    latest_date = usable.index[-1]
+    from_high_pct = (
+        (latest_price / high_price - 1) * 100 if high_price > 0 else None
+    )
+
+    return {
+        "latest_price": latest_price,
+        "latest_price_date": str(latest_date.date()),
+        "fifty_two_week_high": high_price,
+        "fifty_two_week_high_date": str(high_date.date()),
+        "from_fifty_two_week_high_pct": from_high_pct,
+    }
+
+
+def fetch_market_snapshot(ticker: str) -> dict:
+    """Fetch current Yahoo valuation metadata and trailing 52-week prices."""
+    snapshot = compute_market_snapshot(None)
+    snapshot["forward_pe"] = None
+    snapshot["trailing_pe"] = None
+    try:
+        yf_ticker = yf.Ticker(_yf_ticker(ticker))
+        history = yf_ticker.history(period="1y", auto_adjust=False)
+        snapshot.update(compute_market_snapshot(history))
+        info = yf_ticker.get_info()
+        forward_pe = info.get("forwardPE") if info else None
+        if forward_pe is not None and not pd.isna(forward_pe):
+            snapshot["forward_pe"] = float(forward_pe)
+        trailing_pe = info.get("trailingPE") if info else None
+        if trailing_pe is not None and not pd.isna(trailing_pe):
+            snapshot["trailing_pe"] = float(trailing_pe)
+    except Exception as e:
+        logger.warning(f"Failed to fetch market snapshot for {ticker}: {e}")
+    return snapshot
 
 
 def compute_return(df: pd.DataFrame) -> dict:
@@ -361,6 +423,7 @@ def analyze_portfolio(
     logger.info(f"Fetching benchmark {benchmark_ticker}...")
     bench_df = fetch_prices(benchmark_ticker, start_date, end_date)
     bench_stats = compute_return(bench_df)
+    bench_stats.update(fetch_market_snapshot(benchmark_ticker))
     requested_days = (
         datetime.strptime(end_date, "%Y-%m-%d")
         - datetime.strptime(start_date, "%Y-%m-%d")
@@ -386,6 +449,7 @@ def analyze_portfolio(
 
         price_df = fetch_prices(ticker, start_date, end_date)
         stats = compute_return(price_df)
+        market_snapshot = fetch_market_snapshot(ticker)
         requested_return, return_projected = _select_requested_return(
             stats, requested_days
         )
@@ -419,6 +483,7 @@ def analyze_portfolio(
                 "end_date": stats["end_date"],
                 "start_price": stats["start_price"],
                 "end_price": stats["end_price"],
+                **market_snapshot,
                 "return_pct": stats["total_return_pct"],
                 "requested_return_pct": requested_return,
                 "return_projected": return_projected,
@@ -487,10 +552,13 @@ def compare_tickers(
         if df is not None:
             data[sym] = df
 
+    market_snapshots = {sym: fetch_market_snapshot(sym) for sym in all_symbols}
+
     ticker_results = {}
     for sym in tickers:
         if sym in data:
             ticker_results[sym] = compute_return(data[sym])
+            ticker_results[sym].update(market_snapshots[sym])
         else:
             ticker_results[sym] = {"error": "no data"}
 
@@ -498,6 +566,7 @@ def compare_tickers(
     for sym in benchmarks:
         if sym in data:
             benchmark_results[sym] = compute_return(data[sym])
+            benchmark_results[sym].update(market_snapshots[sym])
         else:
             benchmark_results[sym] = {"error": "no data"}
 
@@ -527,6 +596,8 @@ def print_comparison(results: dict) -> None:
 
     header = (
         f"{'Symbol':<10} {'Type':<12} {'Start':>10} {'End':>10} "
+        f"{'Latest':>10} {'52W High':>10} {'FromHigh':>10} "
+        f"{'Fwd PE':>10} {'Trail PE':>10} "
         f"{'ReqReturn':>10} {'Projected':>10} {'AvailRet':>10} "
         f"{'PriceRet':>10} {'DivRet':>10} "
         f"{'Annual':>10} {'Vol':>10} {'Max DD':>10}"
@@ -542,6 +613,11 @@ def print_comparison(results: dict) -> None:
             f"{symbol:<10} {label:<12} "
             f"{fmt_dollar(stats['start_price']):>10} "
             f"{fmt_dollar(stats['end_price']):>10} "
+            f"{fmt_dollar(stats['latest_price']):>10} "
+            f"{fmt_dollar(stats['fifty_two_week_high']):>10} "
+            f"{fmt_pct(stats['from_fifty_two_week_high_pct']):>10} "
+            f"{fmt_number(stats['forward_pe']):>10} "
+            f"{fmt_number(stats['trailing_pe']):>10} "
             f"{fmt_pct(stats['requested_return_pct']):>10} "
             f"{('Yes' if stats['requested_return_projected'] else 'No'):>10} "
             f"{fmt_pct(stats['total_return_pct']):>10} "
@@ -593,6 +669,8 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
     ln(f"| Holdings Analyzed | {results['num_valid']} of {results['num_holdings']} |")
     ln(f"| Total Market Value | {fmt_dollar(results['total_market_value'])} |")
     ln(f"| Benchmark Requested-Period Return | {fmt_pct(bench_ret)} |")
+    ln(f"| Benchmark Forward P/E | {fmt_number(bench.get('forward_pe'))} |")
+    ln(f"| Benchmark Trailing P/E | {fmt_number(bench.get('trailing_pe'))} |")
     ln(
         f"| Portfolio Weighted Return | {fmt_pct(results['portfolio_weighted_return_pct'])} |"
     )
@@ -606,11 +684,13 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
     ln()
     ln(
         "| Ticker | MarketValue | Weight | StartDate | EndDate | StartPrice "
-        "| EndPrice | RequestedReturn | Projected | AvailablePeriodReturn "
+        "| EndPrice | LatestPrice | LatestPriceDate | 52WeekHigh | 52WeekHighDate "
+        "| From52WeekHigh | ForwardPE | TrailingPE | RequestedReturn | Projected "
+        "| AvailablePeriodReturn "
         "| PriceReturn | DividendReturn "
         "| BenchmarkReturn | ExcessVsBenchmark | Status |"
     )
-    ln("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    ln("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for h in holdings:
         ln(
             f"| {h['ticker']} "
@@ -620,6 +700,13 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
             f"| {h['end_date'] or 'N/A'} "
             f"| {fmt_dollar(h['start_price'])} "
             f"| {fmt_dollar(h['end_price'])} "
+            f"| {fmt_dollar(h['latest_price'])} "
+            f"| {h['latest_price_date'] or 'N/A'} "
+            f"| {fmt_dollar(h['fifty_two_week_high'])} "
+            f"| {h['fifty_two_week_high_date'] or 'N/A'} "
+            f"| {fmt_pct(h['from_fifty_two_week_high_pct'])} "
+            f"| {fmt_number(h['forward_pe'])} "
+            f"| {fmt_number(h['trailing_pe'])} "
             f"| {fmt_pct(h['requested_return_pct'])} "
             f"| {'Yes' if h['return_projected'] else 'No'} "
             f"| {fmt_pct(h['return_pct'])} "
