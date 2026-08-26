@@ -1,6 +1,6 @@
 # Codex investing workflows
 
-This repository contains the persistent Codex instructions, launchers, virtual-environment setup, and output structure needed for repeated portfolio-return comparisons and CNBC Investing Club extraction. Open the repository root as the Codex project folder; no separate `~/Documents/Codex/investing-workflows` folder is required.
+This repository contains the persistent Codex instructions, launchers, virtual-environment setup, and output structure needed for repeated portfolio-return comparisons, family-portfolio snapshot reports, and CNBC Investing Club extraction. Open the repository root as the Codex project folder; no separate `~/Documents/Codex/investing-workflows` folder is required.
 
 ## One-time setup
 
@@ -67,6 +67,10 @@ GMAIL_APP_PASSWORD="$(security find-generic-password \
 ```
 
 Without `--output`, files go to `outputs/cnbc/`. The end date is inclusive. Successfully processed messages are marked read. Future Codex sessions should verify that the cookie file exists, test whether the Keychain item is accessible without exposing it, and ask only for the run's date range and any desired output override. CNBC cookies can expire and may need to be exported again.
+
+## Family portfolio snapshots
+
+For future family-portfolio spreadsheet reports, follow [FAMILY_PORTFOLIO_REPORTS.md](FAMILY_PORTFOLIO_REPORTS.md). In particular, Summary must show formula-driven balances and weights for mutually exclusive asset categories, with `Leyi owned assets` as an ownership override category. Category weights use total financial assets—not net worth or home equity—as the denominator and must reconcile to 100%.
 
 ## Starting future Codex sessions
 

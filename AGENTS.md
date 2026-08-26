@@ -6,6 +6,7 @@ This repository is both the source tree and the persistent Codex workspace for:
 
 1. `core/backtests/compare_returns.py`
 2. `cnbc_extractor/main.py`
+3. recurring family-portfolio snapshot reports
 
 Keep generated reports and session artifacts in `outputs/`. Do not commit generated reports, virtual environments, credentials, or exported cookies.
 
@@ -41,6 +42,14 @@ The launchers verify the source branch lineage and keep default output under thi
 - Portfolio mode receives a timestamped default report path from the launcher when no output is specified.
 - Treat results as analytical estimates, not financial advice. Note missing, partial, or stale market data.
 
+## Family portfolio snapshot behavior
+
+- Follow `docs/FAMILY_PORTFOLIO_REPORTS.md` whenever creating or refreshing a family-portfolio snapshot, whether the destination is Google Sheets or a standalone workbook.
+- Treat the `Owner` field as authoritative for ownership-based reporting overrides. Every account owned by `Leyi` must appear in the dedicated `Leyi owned assets` reporting category, regardless of its source asset category.
+- Asset categories on the Summary tab must be mutually exclusive: do not also count Leyi-owned accounts in Cash, Growth, or another category.
+- The Summary asset-category table must include `Asset category`, `Balance`, and `Weight` columns. Calculate each weight as the category balance divided by total financial assets, and include a visible total that reconciles to 100%.
+- Keep category balances and weights formula-driven from the account registry. Do not hardcode summary amounts or percentages.
+
 ## CNBC extractor behavior and safety
 
 - Requires Python 3.10+, a Gmail App Password, and an exported CNBC cookie file.
@@ -60,6 +69,7 @@ The launchers verify the source branch lineage and keep default output under thi
 - CNBC first run: `cnbc_extractor/RUNNING.md`
 - CNBC reference: `cnbc_extractor/README.md`
 - Codex workflow guide: `docs/CODEX_WORKFLOWS.md`
+- Family portfolio report contract: `docs/FAMILY_PORTFOLIO_REPORTS.md`
 
 ## Verification after runs
 
