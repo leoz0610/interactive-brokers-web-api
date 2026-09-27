@@ -75,9 +75,15 @@ What happens on this first run:
   articles, and writes one markdown file per email into `./cnbc_articles`. Each
   email is marked read **only after** its file is written.
 
-Defaults worth knowing: `--label` is `CNBC investing`, `--output` is `./output`,
+Defaults worth knowing: `--label` is `CNBC investing`; omitted `--output` creates
+a dedicated repository `outputs/cnbc/YYYYMMDD-YYYYMMDD/` folder (with a numeric
+suffix on repeat runs),
 `--gmail-email` is a hardcoded address (override with `--gmail-email
 me@gmail.com`). If you omit `--start`/`--end` you'll be prompted for them.
+
+For Codex runs, Google Drive delivery follows the saved
+[workflow](../docs/CODEX_WORKFLOWS.md#google-drive-delivery-codex-runs).
+Standalone CLI runs save locally only.
 
 See the [README](README.md) for output format, noise-filtering internals,
 debugging with `debug_links.py`, and CNBC-access troubleshooting.
