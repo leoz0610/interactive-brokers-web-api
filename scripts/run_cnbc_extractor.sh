@@ -8,10 +8,5 @@ require_trunk_lineage
 PYTHON_BIN="$REPO_DIR/.venvs/cnbc/bin/python"
 require_file "$PYTHON_BIN"
 
-args=("$@")
-if ! has_arg "--output" "${args[@]}"; then
-  args+=("--output" "$REPO_DIR/outputs/cnbc")
-fi
-
 cd "$REPO_DIR/cnbc_extractor"
-exec "$PYTHON_BIN" main.py "${args[@]}"
+exec "$PYTHON_BIN" "$REPO_DIR/cnbc_extractor/main.py" "$@"

@@ -102,7 +102,8 @@ CLI arguments:
 - `--cookies` (**required**) — path to your exported CNBC cookies file; see the
   CNBC authentication section above.
 - `--label` defaults to `CNBC investing`.
-- `--output` defaults to `./output`.
+- Without `--output`, a separate repository `outputs/cnbc/YYYYMMDD-YYYYMMDD/` directory is created for the inclusive date range (repeat runs get `_2`, `_3`, etc.). Explicit `--output` paths are used as supplied.
+- Codex runs deliver Markdown files to the configured Google Drive folder in a dedicated date-range subfolder; see [the delivery workflow](../docs/CODEX_WORKFLOWS.md#google-drive-delivery-codex-runs). Standalone CLI runs save locally only.
 - `--gmail-email` defaults to `chensili.uestc@gmail.com`.
 - If you omit `--start` or `--end` you're prompted for them.
 

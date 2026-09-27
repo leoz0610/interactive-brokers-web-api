@@ -14,6 +14,7 @@ import getpass
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
 # When set, this env var supplies the Gmail app password so you don't have to
 # type it every run. If unset, the script falls back to an interactive prompt.
@@ -49,8 +50,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--end", help="End date (YYYY-MM-DD)")
     parser.add_argument(
         "--output",
-        default="./output",
-        help="Output directory (default: ./output)",
+        default=None,
+        help="Output directory (default: outputs/cnbc/YYYYMMDD-YYYYMMDD in the repository; repeat runs get a numeric suffix)",
     )
     parser.add_argument(
         "--gmail-email",
@@ -90,6 +91,22 @@ def _validate_date(date_str: str, field: str) -> str:
     return date_str
 
 
+def create_run_directory(start_date: str, end_date: str) -> str:
+    """Reserve a separate local staging directory for each extraction run."""
+    root = Path(__file__).resolve().parents[1] / "outputs" / "cnbc"
+    root.mkdir(parents=True, exist_ok=True)
+    name = "-".join(datetime.strptime(d, "%Y-%m-%d").strftime("%Y%m%d")
+                    for d in (start_date, end_date))
+    attempt = 1
+    while True:
+        directory = root / (name if attempt == 1 else f"{name}_{attempt}")
+        try:
+            directory.mkdir()
+            return str(directory)
+        except FileExistsError:
+            attempt += 1
+
+
 def main() -> int:
     args = parse_args()
 
@@ -100,7 +117,10 @@ def main() -> int:
     end_date = _validate_date(
         _prompt_if_missing(args.end, "End date (YYYY-MM-DD): "), "end date"
     )
-    output_dir = args.output
+    if datetime.strptime(start_date, "%Y-%m-%d") > datetime.strptime(end_date, "%Y-%m-%d"):
+        sys.exit("Start date must be on or before end date.")
+    output_dir = args.output or create_run_directory(start_date, end_date)
+    print(f"Output directory: {Path(output_dir).resolve()}")
 
     # Gmail credentials. The email comes from --gmail-email (defaulting to
     # DEFAULT_EMAIL); the app password comes from GMAIL_PASSWORD_ENV when set,

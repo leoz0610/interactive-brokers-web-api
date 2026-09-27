@@ -45,10 +45,11 @@ The launchers verify the source branch lineage and keep default output under thi
 
 - Requires Python 3.10+, a Gmail App Password, and an exported CNBC cookie file.
 - This workstation has Python 3.13 installed at `/usr/local/bin/python3.13`; use `scripts/setup.sh` to create or refresh the repository virtual environments.
-- The confirmed Gmail account is `chensili.uestc@gmail.com`, the Gmail label is `CNBC investing`, and the usual cookie file is `/Users/silichen/Documents/cnbc_extract/cookies.txt`. Still confirm the inclusive dates and output location for each run, and verify that the cookie file exists and remains valid.
+- The confirmed Gmail account is `chensili.uestc@gmail.com`, the Gmail label is `CNBC investing`, and the usual cookie file is `/Users/silichen/Documents/cnbc_extract/cookies.txt`. Confirm the inclusive dates for each run; the standing output destination is the Google Drive folder below unless the user overrides it, and verify that the cookie file exists and remains valid.
 - The Gmail App Password is stored in macOS Keychain under account `chensili.uestc@gmail.com` and service `cnbc-extractor-gmail`. Retrieve it directly into `GMAIL_APP_PASSWORD` for the extractor process with `security find-generic-password`; never print, log, or write its value. Keychain access may require sandbox escalation or macOS approval.
 - A successful normal run writes Markdown and marks processed Gmail messages read.
-- Before running, confirm Gmail account, Gmail label, inclusive start/end dates, cookies path, and output location.
+- Before running, resolve Gmail account, Gmail label, inclusive start/end dates, cookies path, and output location from these saved defaults and the user request. Ask only for missing dates or ambiguous overrides.
+- For every Codex extraction run, upload the generated Markdown files to Google Drive folder `14upHfHyOBPOxarmprZYO1eKMiFQGL4Zd` (CNBC Jim Cramer Emails). This is the standing authorized destination. Follow the upload and verification procedure in `docs/CODEX_WORKFLOWS.md`. Each run gets a dedicated date-range folder, e.g. `20260907-20260926`; never mix separate runs. Preserve local staging files under `outputs/cnbc/` for upload retries. A run is not fully delivered until Drive uploads are verified; report partial uploads explicitly.
 - Prefer `cnbc_extractor/debug_links.py` for diagnosis because normal extraction changes Gmail read state.
 - Never display, log, commit, or copy secrets into repository files. Cookie files must remain outside this repository.
 - Use `GMAIL_APP_PASSWORD` only from the current process environment or a secure credential mechanism; otherwise allow the program's masked prompt.
