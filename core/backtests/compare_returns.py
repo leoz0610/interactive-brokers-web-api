@@ -683,25 +683,18 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
     ln("## 2. Holdings Summary")
     ln()
     ln(
-        "| Ticker | MarketValue | Weight | StartDate | EndDate | StartPrice "
-        "| EndPrice | LatestPrice | LatestPriceDate | 52WeekHigh | 52WeekHighDate "
+        "| Ticker | MarketValue | Weight | 52WeekHigh | 52WeekHighDate "
         "| From52WeekHigh | ForwardPE | TrailingPE | RequestedReturn | Projected "
         "| AvailablePeriodReturn "
         "| PriceReturn | DividendReturn "
-        "| BenchmarkReturn | ExcessVsBenchmark | Status |"
+        "| ExcessVsBenchmark | Status |"
     )
-    ln("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    ln("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for h in holdings:
         ln(
             f"| {h['ticker']} "
             f"| {fmt_dollar(h['market_value'])} "
             f"| {fmt_pct(h['weight'])} "
-            f"| {h['start_date'] or 'N/A'} "
-            f"| {h['end_date'] or 'N/A'} "
-            f"| {fmt_dollar(h['start_price'])} "
-            f"| {fmt_dollar(h['end_price'])} "
-            f"| {fmt_dollar(h['latest_price'])} "
-            f"| {h['latest_price_date'] or 'N/A'} "
             f"| {fmt_dollar(h['fifty_two_week_high'])} "
             f"| {h['fifty_two_week_high_date'] or 'N/A'} "
             f"| {fmt_pct(h['from_fifty_two_week_high_pct'])} "
@@ -712,7 +705,6 @@ def generate_markdown_report(results: dict, input_file: str, top_n: int = TOP_N)
             f"| {fmt_pct(h['return_pct'])} "
             f"| {fmt_pct(h['price_return_pct'])} "
             f"| {fmt_pct(h['dividend_return_pct'])} "
-            f"| {fmt_pct(h['benchmark_return_pct'])} "
             f"| {fmt_pct(h['excess_return_pct'])} "
             f"| {h['status']} |"
         )
